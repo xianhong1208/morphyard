@@ -157,3 +157,11 @@ Bug reports and pull requests are welcome. Pull requests go into `dev`; run `uv 
 ## Licence
 
 [MIT](LICENSE)
+
+### Third-party licences
+
+Morphyard's own code is MIT, and it uses no AGPL library (no PyMuPDF, no Ghostscript). It runs the
+conversion engines as separate programs; the Docker image ships them unmodified, each under its own
+licence: LibreOffice (MPL-2.0), Pandoc (GPL-2.0-or-later), Poppler's utilities (GPL), Tesseract
+(Apache-2.0) and the Noto CJK fonts (SIL OFL 1.1). These licences cover the tools, not the files
+you convert with them.
