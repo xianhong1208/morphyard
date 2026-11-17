@@ -157,3 +157,10 @@ uv run python scripts/mcp_smoke.py
 ## 授權
 
 [MIT](LICENSE)
+
+### 第三方授權
+
+Morphyard 本身的程式碼是 MIT,且不使用任何 AGPL 函式庫(不用 PyMuPDF、不用 Ghostscript)。轉檔引擎都以
+獨立程式的方式執行;Docker 映像原封不動地附帶它們,各依其授權:LibreOffice(MPL-2.0)、
+Pandoc(GPL-2.0-or-later)、Poppler 工具(GPL)、Tesseract(Apache-2.0)與 Noto CJK 字型
+(SIL OFL 1.1)。這些授權規範的是工具本身,不是你用它們轉出來的檔案。

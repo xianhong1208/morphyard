@@ -6,6 +6,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+- README's Licence section lists the licences of the conversion engines in the Docker image.
+
 ## [1.2.2] — 2026-11-13
 
 ### Changed
