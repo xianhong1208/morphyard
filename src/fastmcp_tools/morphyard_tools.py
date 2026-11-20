@@ -37,6 +37,7 @@ from src.domain.convert.registry import (
 )
 from src.domain.convert.service import convert_artifact, resolve_artifact_input
 from src.domain.convert.types import FALLBACK_NAME, mime_type_for
+from src.fastmcp_tools.pdf_secure_tools import register_pdf_secure_tools
 from src.log import get_mcptools_logger
 
 logger = get_mcptools_logger()
@@ -428,30 +429,9 @@ def register_morphyard_tools(mcp: FastMCP):
             File(data=data, format="pdf", name=f"{source.name}_rotated"),
         ]
 
-    @mcp.tool(output_schema=None)
-    async def pdf_protect(
-        password: Annotated[str, Field(description="Password required to open the PDF")],
-        file_content: _FILE_CONTENT = None,
-        file_name: _FILE_NAME = None,
-        mime_type: _MIME_TYPE = None,
-    ) -> list:
-        """Add an open password to a PDF (AES-256 encryption).
-
-        The password appears in the conversation history; remind the user not to
-        reuse a password from another system.
-        """
-        source = resolve_artifact_input(file_content, file_name, mime_type)
-        if source.fmt != "pdf":
-            return [f"This is not a PDF (detected {source.fmt})."]
-
-        async with conversion_slot():
-            data = await pdfops.encrypt_pdf(source.data, password)
-        return [
-            "Encrypted. The open password is the one the user specified; remind them "
-            "to keep it safe (it now appears in the conversation, so it is best not "
-            "to reuse a password from another system).",
-            File(data=data, format="pdf", name=f"{source.name}_protected"),
-        ]
+    # pdf_compress, pdf_protect, pdf_unlock, pdf_metadata, pdf_strip_metadata
+    # live in pdf_secure_tools.py (pikepdf)
+    register_pdf_secure_tools(mcp)
 
     # pdf_merge, pdf_delete_pages, pdf_reorder_pages, pdf_watermark, pdf_page_numbers
     from src.fastmcp_tools.pdf_page_tools import register_pdf_page_tools

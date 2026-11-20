@@ -11,6 +11,7 @@ src/
 │   ├── registry.py         Route table and conversion planning (the capability boundary)
 │   ├── service.py          base64 input → planned path → output
 │   ├── pdfops.py           PDF-only operations (split / extract / rotate / encrypt / images)
+│   ├── pdf_secure.py       pikepdf: compress / protect + permissions / unlock / metadata
 │   └── engines/
 │       ├── base.py           Engine interface, subprocess execution with timeout, temporary workspace
 │       ├── discovery.py      Cross-platform executable lookup (PATH plus known install locations)
@@ -22,7 +23,8 @@ src/
 │       └── text.py           JSON / XML / TSV → Markdown
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/
-    └── morphyard_tools.py     MCP tool layer
+    ├── morphyard_tools.py     MCP tool layer
+    └── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
 ```
 
 Dependencies point strictly downward. The tool layer never touches base64 payloads or engines; it talks only to `service.py`. `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
@@ -139,7 +141,11 @@ Measured result: sixteen formats are recognised correctly with neither `file_nam
 | `pdf_extract_pages` | Pick or reorder pages | File |
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
-| `pdf_protect` | AES-256 encryption | File |
+| `pdf_protect` | AES-256: open password and/or permissions under an owner password | File |
+| `pdf_unlock` | Remove the password and permissions, given the password | File |
+| `pdf_compress` | Make a PDF smaller (`lossless` / `balanced` / `small`) | File |
+| `pdf_metadata` | Info, XMP, version, pages, encryption, scripts, attachments | Text |
+| `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
 
 `convert_document` returns a file; `extract_text` returns text. The guidance that tells a model which to choose lives in `config/instructions.md`.
 

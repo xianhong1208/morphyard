@@ -13,7 +13,11 @@
 | `pdf_extract_pages` | 抽頁或重排頁序 | 檔案 |
 | `pdf_split` | 切分成多個檔案 | 多個檔案 |
 | `pdf_rotate` | 旋轉指定頁面 | 檔案 |
-| `pdf_protect` | AES-256 加密 | 檔案 |
+| `pdf_protect` | AES-256：開啟密碼，以及／或由擁有者密碼保護的權限 | 檔案 |
+| `pdf_unlock` | 憑密碼移除密碼與權限限制 | 檔案 |
+| `pdf_compress` | 縮小 PDF（`lossless` / `balanced` / `small`） | 檔案 |
+| `pdf_metadata` | Info、XMP、版本、頁數、加密、腳本、附件 | 文字 |
+| `pdf_strip_metadata` | 移除中繼資料（可選擇一併移除腳本／附件） | 檔案 |
 | `pdf_merge` | 依序合併 2–20 個 PDF，每個檔案一個書籤 | 檔案 |
 | `pdf_delete_pages` | 刪除指定頁面 | 檔案 |
 | `pdf_reorder_pages` | 把所有頁面排成新順序（`3,1,2,4-10`、`10-1`、`reverse`） | 檔案 |
@@ -41,6 +45,16 @@
 | 圖片 | png, jpg, webp, gif, bmp, tiff |
 
 不支援：音訊、視訊、壓縮檔、CAD、可執行檔。工具描述與 [`config/instructions.md`](../config/instructions.md) 會告訴模型直接說明不支援，而不是反覆重試。
+
+## PDF 壓縮、密碼與中繼資料
+
+- **`pdf_compress`** — `lossless` 只重整檔案結構（object stream、重新壓縮 stream、移除未使用的物件），頁面不變。`balanced`（預設）另把高於 150 DPI 的圖片降解析度並重新編碼成 JPEG 品質 75；`small` 為 96 DPI、品質 50。`max_dpi`（36–600）與 `jpeg_quality`（10–95）可覆寫等級的設定。DPI 依每張圖片在頁面上實際繪製的大小計算，所以縮小顯示的圖片會降得更多。文字、字型與向量圖形一律不降質。若結果沒有小至少 1 %，就回傳原檔並在回覆中說明。掃描檔縮得最多（六頁 300 DPI 掃描：11.0 MB → balanced 1.8 MB、small 0.64 MB）；純文字 PDF 只靠重整就能縮小（實測 28–51 %）。
+- **`pdf_protect`** — AES-256。`password` 是開啟密碼；`owner_password` 保護 `allow_print`、`allow_copy`、`allow_modify`、`allow_annotate`、`allow_fill_forms` 這些權限（預設全部允許）。任何限制都需要擁有者密碼，且必須與開啟密碼不同。在 PDF 格式中，註解權限包含填寫表單，所以要禁止填表也必須設 `allow_annotate=false`。權限由一般的閱讀器遵守，並非 DRM。
+- **`pdf_unlock`** — 憑密碼回傳未加密的副本。擁有者密碼一定可用；開啟密碼只在沒有任何限制時可用。不提供密碼破解。
+- **`pdf_metadata`** — 唯讀：版本、頁數、加密、Info、XMP、註解作者、腳本與動作、內嵌檔案、表單。
+- **`pdf_strip_metadata`** — 一律移除 Info 字典、所有 XMP stream 與 PieceInfo，並給檔案新的識別碼；預設也移除註解的作者名稱與日期（不動表單欄位名稱）。可選擇一併移除腳本與動作（`remove_javascript`）及內嵌檔案（`remove_attachments`）。寫在頁面文字裡的名字不會處理。
+
+除了 `pdf_unlock`（以及會回報加密狀態的 `pdf_metadata`），所有工具都會拒絕已加密的 PDF 並指向 `pdf_unlock`。限制：5,000 頁；超過一億像素的圖片不重新編碼。
 
 ## 運作方式
 

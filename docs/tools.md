@@ -13,7 +13,11 @@
 | `pdf_extract_pages` | Pick or reorder pages | File |
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
-| `pdf_protect` | AES-256 encryption | File |
+| `pdf_protect` | AES-256: open password and/or permissions under an owner password | File |
+| `pdf_unlock` | Remove the password and permissions, given the password | File |
+| `pdf_compress` | Make a PDF smaller (`lossless` / `balanced` / `small`) | File |
+| `pdf_metadata` | Info, XMP, version, pages, encryption, scripts, attachments | Text |
+| `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
 | `pdf_merge` | Merge 2–20 PDFs in order, one bookmark per file | File |
 | `pdf_delete_pages` | Remove selected pages | File |
 | `pdf_reorder_pages` | Put every page in a new order (`3,1,2,4-10`, `10-1`, `reverse`) | File |
@@ -41,6 +45,16 @@
 | Images | png, jpg, webp, gif, bmp, tiff |
 
 Not supported: audio, video, archives, CAD, executables. The tool descriptions and [`config/instructions.md`](../config/instructions.md) tell the model to say so instead of retrying.
+
+## PDF compression, passwords and metadata
+
+- **`pdf_compress`** — `lossless` restructures the file only (object streams, recompressed streams, unused objects removed): pages are unchanged. `balanced` (default) also downsamples images above 150 DPI and re-encodes them as JPEG quality 75; `small` uses 96 DPI and quality 50. `max_dpi` (36–600) and `jpeg_quality` (10–95) override the level. The DPI is measured from where each image is painted, so an image shown small is downsampled more. Text, fonts and vector graphics are never degraded. If the result is not at least 1 % smaller, the original is returned and the answer says so. Scans shrink most (a six-page 300 DPI scan: 11.0 MB → 1.8 MB balanced, 0.64 MB small); text-only PDFs shrink by restructuring alone (28–51 % on the PDFs measured).
+- **`pdf_protect`** — AES-256. `password` is the open password; `owner_password` guards the permissions `allow_print`, `allow_copy`, `allow_modify`, `allow_annotate`, `allow_fill_forms` (all allowed by default). Any restriction needs an owner password that differs from the open password. In the PDF format the annotate permission includes filling forms, so blocking form filling also needs `allow_annotate=false`. Permissions are honoured by standard readers; they are not DRM.
+- **`pdf_unlock`** — returns an unencrypted copy given the password. The owner password always works; the open password only when nothing is restricted. No password recovery.
+- **`pdf_metadata`** — read only: version, pages, encryption, Info, XMP, annotation authors, scripts and actions, embedded files, forms.
+- **`pdf_strip_metadata`** — always removes the Info dictionary, every XMP stream and PieceInfo, and gives the file a new identifier; by default also annotation author names and dates (not form field names). Optionally scripts and actions (`remove_javascript`) and embedded files (`remove_attachments`). Names written in the page text are not touched.
+
+Every tool except `pdf_unlock` (and `pdf_metadata`, which reports it) refuses an encrypted PDF and points to `pdf_unlock`. Limits: 5,000 pages; images over 100 megapixels are not re-encoded.
 
 ## How it works
 
