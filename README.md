@@ -51,7 +51,7 @@ And `extract_text` on the same file returns Markdown for the model to read:
 
 ## Key features
 
-- **Eight tools, one contract.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`. Every tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them.
+- **Every tool, one contract.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`, `pdf_to_images`, `images_to_pdf`. Every tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them.
 - **Six engines, chosen by fidelity.** LibreOffice for layout-faithful Office ↔ PDF, Pandoc for structure-preserving text formats, [firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) for fast document → Markdown extraction, Tesseract for OCR, Pillow for images, and a thin text engine for JSON / XML / TSV. A missing engine disables its paths at startup instead of failing at request time.
 - **Multi-hop planning that says what it costs.** When no engine converts A → B directly, the registry searches up to three hops, ranked by fidelity. Lossy hops are allowed by default but flagged in the result so the model can tell the user; pass `allow_quality_loss=false` to refuse any path that would lose layout.
 - **Format detection without a file name.** Extension → MIME → container inspection (ZIP directory / OLE2 streams) → magic bytes. Sixteen formats are recognised with no name and no MIME type at all.
@@ -143,7 +143,7 @@ Either way, `MORPHYARD_BASE_URL` must be the address clients use, because the to
 
 | Document | What is in it |
 |---|---|
-| [Tools and formats](docs/tools.md) | The eight tools, supported formats, how a conversion runs, known limits |
+| [Tools and formats](docs/tools.md) | The tools, supported formats, how a conversion runs, known limits |
 | [Configuration](docs/configuration.md) | Environment variables, concurrent conversions and the MCP Gate revocation feed |
 | [Architecture](docs/architecture.md) | Module layout, engines and fidelity, format detection, conversion planning, test layers |
 | [Development](docs/development.md) | Setting up, the three test layers, CI, how to contribute |

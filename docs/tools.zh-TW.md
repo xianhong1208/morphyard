@@ -14,6 +14,12 @@
 | `pdf_split` | 切分成多個檔案 | 多個檔案 |
 | `pdf_rotate` | 旋轉指定頁面 | 檔案 |
 | `pdf_protect` | AES-256 加密 | 檔案 |
+| `pdf_to_images` | 把頁面轉成 PNG、JPEG 或 WebP，每頁一張圖 | 檔案（單頁）或 ZIP |
+| `images_to_pdf` | 一張圖片、多頁 TIFF 或圖片 ZIP → 一個 PDF，每張圖一頁 | 檔案 |
+
+**PDF 頁面轉圖片。** `pdf_to_images` 以 Poppler 的 `pdftoppm` 繪製：`image_format` 為 `png`（預設）、`jpg` 或 `webp`；`dpi` 36–300（預設 150）；`pages` 如 `1-3,7`（空白 = 全部，每次最多 50 頁）；`quality` 1–95，用於 JPEG / WebP。某頁在指定 DPI 下會超過 2500 萬像素時，改用較低 DPI 繪製，並在回覆中說明。單頁回傳圖片本身；多頁回傳一個 ZIP（`<name>_p01.png`…），因為有些 client 會把圖片 resource 變成模型輸入，而 ZIP 對使用者是一次下載。全部圖片合計不得超過 50 MB。有開啟密碼的 PDF 會被拒絕（只有權限密碼的 PDF 可以繪製）。`convert_document` 從 PDF 轉成圖片格式時，會指引模型改用這個工具。
+
+**圖片轉 PDF。** `images_to_pdf` 接收一個檔案：一張圖片（PNG、JPEG、WebP、TIFF、GIF、BMP）、多頁 TIFF 的每一頁、GIF / WebP 動畫的第一格，或一個圖片 ZIP，頁序依檔名的自然順序（`page2` 在 `page10` 之前；非圖片檔、`__MACOSX/` 與隱藏檔會略過並列出）。`page_size` 為 `fit`（預設，每頁等於圖片大小，依檔案記錄的解析度，沒有則以 96 DPI 計）、`a4` 或 `letter`（圖片縮放到邊界內並置中）；`orientation` 為 `auto`（寬圖用橫向）、`portrait` 或 `landscape`；`margin_mm` 0–50（`fit` 預設 0，其他預設 10）。會套用 EXIF 方向；JPEG（以及相機 MPO 檔的主圖）逐位元組原樣嵌入，方向由頁面上的擺放方式處理；其他圖片以無損方式儲存；透明處變成白色；相符的 ICC 設定檔會保留。上限：100 頁、單張 5000 萬像素、合計 4 億像素、ZIP 500 個項目、解壓後 200 MB、輸出 100 MB。HEIC / AVIF 尚不支援（1.6）。`convert_document` 把單張圖片轉成 `pdf` 時使用同一套程式，頁面為 `fit`；先前它會對圖片做 OCR，回傳一個只有文字的 PDF。
 
 **支援的格式**
 
@@ -51,7 +57,7 @@ client ──(bearer token)──▶ /mcp ──▶ tools ──▶ service.py �
 
 ## 已知限制
 
-- 一次呼叫只處理一個檔案（尚無 `pdf_merge` 工具；合併邏輯已在 `pdfops` 中實作）。
+- 一次呼叫只處理一個檔案（尚無 `pdf_merge` 工具；合併邏輯已在 `pdfops` 中實作）。多張圖片請用 ZIP 交給 `images_to_pdf`。
 - 單檔 50 MB，每次 OCR 最多 30 頁。
 - 同時執行的轉換數有上限（預設為 CPU 數，最多 8）；其餘排隊等待，超過佇列長度或等待時間時，工具會回答「伺服器忙碌」，稍後再呼叫即可。見[同時轉換](configuration.zh-TW.md#同時轉換)。
 - PDF → 可編輯格式一定有損；PDF 內的表格以啟發式方式還原。

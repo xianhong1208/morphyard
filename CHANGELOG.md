@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `pdf_to_images` (#31): render PDF pages as PNG, JPEG or WebP with Poppler's `pdftoppm`, one image per page. Options: `image_format`, `dpi` (36–300, default 150), `pages` (at most 50 per call), `quality`. A page that would exceed 25 megapixels is rendered at a lower DPI and the reply says which. One page comes back as the image, several as one ZIP (`<name>_p01.png`, …); the images may total 50 MB. Password-protected PDFs are refused.
+- `images_to_pdf` (#32): one image, a multi-page TIFF or a ZIP of images (natural file-name order, non-images skipped and listed) → one PDF, a page per image. `page_size` `fit` / `a4` / `letter`, `orientation` `auto` / `portrait` / `landscape`, `margin_mm`. EXIF orientation is applied, JPEGs are embedded unchanged, other images losslessly, transparency becomes white. Limits: 100 pages, 50 megapixels per image, 400 in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output.
+
+### Fixed
+- `convert_document` from an image to PDF returned the picture's OCR text in a PDF (png → txt → docx → pdf). It now puts the picture on a page of its own size (new engine `images-to-pdf`). From PDF to an image format, its error now names `pdf_to_images`.
+
 ### Documentation
 - README's Licence section lists the licences of the conversion engines in the Docker image.
 

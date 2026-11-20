@@ -51,7 +51,7 @@ FILE  file:///report.pdf  application/pdf  23963 bytes
 
 ## 主要特色
 
-- **八個工具，一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`。每個工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對所有工具都適用。
+- **每個工具，同一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`、`pdf_to_images`、`images_to_pdf`。每個工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對所有工具都適用。
 - **六個引擎，依 fidelity 挑選。** LibreOffice 負責版面保真的 Office ↔ PDF，Pandoc 負責保留結構的文字格式，[firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) 負責快速的文件 → Markdown 抽取，Tesseract 負責 OCR，Pillow 負責圖片，另有一個輕量文字引擎處理 JSON / XML / TSV。缺少的引擎會在啟動時停用對應路徑，而不是在請求時才失敗。
 - **多跳規劃，並說明代價。** 沒有引擎能直接把 A 轉成 B 時，registry 會搜尋最多三跳的路徑並依 fidelity 排序。有損的跳預設允許，但會在結果中標記，讓模型轉告使用者；傳 `allow_quality_loss=false` 則拒絕任何會失去版面的路徑。
 - **沒有檔名也能偵測格式。** 副檔名 → MIME → 容器內部檢查（ZIP 目錄 / OLE2 stream）→ 檔頭魔數。十六種格式在完全沒有檔名與 MIME type 的情況下仍能正確辨識。
@@ -143,7 +143,7 @@ uv run python scripts/mcp_smoke.py
 
 | 文件 | 內容 |
 |---|---|
-| [工具與格式](docs/tools.zh-TW.md) | 八個工具、支援的格式、一次轉換如何執行、已知限制 |
+| [工具與格式](docs/tools.zh-TW.md) | 各個工具、支援的格式、一次轉換如何執行、已知限制 |
 | [設定](docs/configuration.zh-TW.md) | 環境變數、同時轉換與 MCP Gate revocation feed |
 | [架構](docs/architecture.md)（英文） | 模組配置、引擎與 fidelity、格式偵測、轉換規劃、測試分層 |
 | [開發](docs/development.zh-TW.md) | 準備環境、三層測試、CI、如何貢獻 |

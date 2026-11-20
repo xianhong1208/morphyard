@@ -14,6 +14,12 @@
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
 | `pdf_protect` | AES-256 encryption | File |
+| `pdf_to_images` | Render pages as PNG, JPEG or WebP, one image per page | File (one page) or ZIP |
+| `images_to_pdf` | One image, a multi-page TIFF or a ZIP of images → one PDF, a page per image | File |
+
+**PDF pages to images.** `pdf_to_images` renders with Poppler's `pdftoppm`: `image_format` `png` (default), `jpg` or `webp`; `dpi` 36–300 (default 150); `pages` like `1-3,7` (empty = all, at most 50 per call); `quality` 1–95 for JPEG / WebP. A page that would exceed 25 megapixels at the requested DPI is rendered at a lower DPI, and the reply says so. One page comes back as the image; several come back as one ZIP (`<name>_p01.png`, …), because some clients turn image resources into model input and a ZIP is one download. The images together may not exceed 50 MB. Password-protected PDFs are refused (a PDF with only an owner password renders). `convert_document` from PDF to an image format points the model at this tool.
+
+**Images to a PDF.** `images_to_pdf` takes one file: an image (PNG, JPEG, WebP, TIFF, GIF, BMP), every page of a multi-page TIFF, the first frame of a GIF / WebP animation, or a ZIP of images whose pages follow the file names in natural order (`page2` before `page10`; non-images, `__MACOSX/` and hidden files are skipped and listed). `page_size` `fit` (default, each page the size of its image at the resolution the file records, else 96 DPI), `a4` or `letter` (image scaled to fit inside the margins and centred); `orientation` `auto` (landscape for wide images), `portrait` or `landscape`; `margin_mm` 0–50 (default 0 for `fit`, 10 otherwise). EXIF orientation is applied; JPEGs (and the main image of a camera MPO file) are embedded byte for byte, with the orientation applied by the placement on the page; other images are stored losslessly; transparency becomes white; a matching ICC profile is kept. Limits: 100 pages, 50 megapixels per image, 400 megapixels in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output. HEIC / AVIF are not read yet (1.6). `convert_document` from one image to `pdf` uses the same code with `fit` pages; before, it OCRed the picture and returned its text in a PDF.
 
 **Supported formats**
 
@@ -51,7 +57,7 @@ The engine table, the planner's rules and the format-detection details are in [d
 
 ## Known limits
 
-- One file per call (no `pdf_merge` tool yet; the merge logic exists in `pdfops`).
+- One file per call (no `pdf_merge` tool yet; the merge logic exists in `pdfops`). For several images, `images_to_pdf` takes a ZIP.
 - 50 MB per file, 30 pages per OCR run.
 - A limited number of conversions run at once (by default the CPU count, at most 8); more wait in a queue, and past its length or wait time a tool answers "the server is busy" and should be called again a little later. See [Concurrent conversions](configuration.md#concurrent-conversions).
 - PDF → editable formats is always lossy; tables inside PDFs are recovered heuristically.
