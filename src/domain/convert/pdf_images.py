@@ -188,11 +188,11 @@ async def render_pages(data: bytes, fmt: str = "png", dpi: int = DEFAULT_DPI,
     """Render the selected pages of a PDF to images, one image per page, in the order given"""
     fmt, dpi, quality = validate_render_args(fmt, dpi, quality)
 
+    # The PDF and the page range are checked first, so their errors are the ones reported
+    total, plan = await asyncio.to_thread(_page_plan, data, page_spec, fmt)
     pdftoppm = find_binary("pdftoppm")
     if not pdftoppm:
         raise _render_error(fmt, "Poppler (pdftoppm) is not installed on this server")
-
-    total, plan = await asyncio.to_thread(_page_plan, data, page_spec, fmt)
     result = RenderedPages(fmt=fmt, dpi=dpi, total_pages=total)
     timeout = base.resolve_timeout({}, 120)
     produced = 0
