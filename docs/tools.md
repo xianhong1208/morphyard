@@ -14,6 +14,21 @@
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
 | `pdf_protect` | AES-256 encryption | File |
+| `pdf_merge` | Merge 2–20 PDFs in order, one bookmark per file | File |
+| `pdf_delete_pages` | Remove selected pages | File |
+| `pdf_reorder_pages` | Put every page in a new order (`3,1,2,4-10`, `10-1`, `reverse`) | File |
+| `pdf_watermark` | Text or image (PNG/JPEG) watermark: centre, diagonal or tiled; opacity, colour, rotation; all or chosen pages | File |
+| `pdf_page_numbers` | Page numbers (`{page}`, `{total}`), header and footer text; position, start number, skip the first page, font size, margin | File |
+
+### PDF page tools
+
+- **Input.** `pdf_merge` takes `files`, a list of `{file_content, file_name}` items (base64), because a host's upload injection fills only one `file_content` per call: the caller passes the bytes itself. The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
+- **Pages.** Page selections use the same 1-based syntax as `pdf_extract_pages` (`1-3,7,10-`). `pdf_reorder_pages` insists that every page appears exactly once and names the missing or repeated ones; use `pdf_delete_pages` to drop pages.
+- **Kept.** Merge nests each file's bookmarks under a bookmark named after the file. Delete and reorder keep the bookmarks whose page survives, pointing at its new place. Watermark and page numbers keep bookmarks, links, form fields and metadata.
+- **Placement.** Watermarks, numbers, headers and footers are drawn in the page as the reader sees it (the crop box, turned by the page's rotation), so they sit upright on landscape and rotated pages and on documents that mix page sizes. A single watermark or a header too long for the page is shrunk to fit.
+- **Numbering.** Only stamped pages are counted: `{page}` runs `start_number`, `start_number + 1`, … over them and `{total}` is the last number shown, so skipping a cover gives "1 / 9" … "9 / 9" on a 10-page file.
+- **Fonts.** Text is drawn with DejaVu Sans (Latin) and Droid Sans Fallback (Chinese, Japanese, Korean), embedded as subsets, switching per run of characters. Noto CJK cannot be used here: it is OpenType/CFF, which reportlab cannot embed. Without Droid Sans Fallback installed, CJK text uses a non-embedded CID font and viewers substitute their own.
+- **Limits.** Merge: 2–20 files, 50 MB together. Every page tool: 2,000 pages per document, 100 MB output, 200 characters of text, watermark image 10 MB / 40 megapixels. Encrypted PDFs are refused; remove the password first.
 
 **Supported formats**
 
@@ -51,7 +66,7 @@ The engine table, the planner's rules and the format-detection details are in [d
 
 ## Known limits
 
-- One file per call (no `pdf_merge` tool yet; the merge logic exists in `pdfops`).
+- One file per call, except `pdf_merge`, which takes its files as base64 in a list (a host that can inject only one upload cannot feed it yet; several uploads in one call is planned for 1.4).
 - 50 MB per file, 30 pages per OCR run.
 - A limited number of conversions run at once (by default the CPU count, at most 8); more wait in a queue, and past its length or wait time a tool answers "the server is busy" and should be called again a little later. See [Concurrent conversions](configuration.md#concurrent-conversions).
 - PDF → editable formats is always lossy; tables inside PDFs are recovered heuristically.

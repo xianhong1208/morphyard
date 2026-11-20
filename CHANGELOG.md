@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `pdf_merge` (#24): merge 2–20 PDFs (50 MB together) in the given order into one. Each file gets a top-level bookmark named after it, with its own bookmarks nested underneath (`bookmarks=false` to skip). The files come as a list of `{file_content, file_name}` items in base64, since a host's upload injection fills only one file per call.
+- `pdf_delete_pages` and `pdf_reorder_pages` (#26). Delete takes a page selection (`2,5-7`) and refuses to delete every page. Reorder takes the complete new order (`3,1,2,4-10`; a descending range such as `10-1` runs backwards; `reverse`) and refuses an order that leaves out or repeats a page, naming which. Bookmarks follow their pages.
+- `pdf_watermark` (#25): a text watermark (font size, opacity, rotation, colour as hex or name) or a PNG/JPEG image watermark (`watermark_image`, base64; transparency kept; `image_scale`), in the centre, along the page diagonal or tiled, on all pages or a page selection.
+- `pdf_page_numbers` (#28): page numbers in a format such as `{page} / {total}` or `第 {page} 頁`, in one of six positions, with a start number, an option to skip the first page and a page selection, plus header and footer text (left, centre or right; `{page}`/`{total}` allowed), font size, margin and colour.
+- Watermarks, numbers, headers and footers are placed upright as the reader sees each page, on mixed page sizes and rotated pages. Text in Chinese, Japanese and Korean is drawn with Droid Sans Fallback and Latin text with DejaVu Sans, embedded as subsets. New dependency: reportlab (BSD); the Docker image adds `fonts-droid-fallback` (Apache-2.0).
+- Limits for the page tools: 2,000 pages per document, 100 MB output, 200 characters of text, watermark images up to 10 MB and 40 megapixels. Encrypted PDFs are refused with a message saying to remove the password first.
+
 ### Documentation
 - README's Licence section lists the licences of the conversion engines in the Docker image.
 
