@@ -17,7 +17,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 # fonts-noto-cjk Required. Without it, CJK PDFs produced by LibreOffice render as
 #                tofu boxes on every page, silently. The easiest thing to miss in
 #                testing and the first thing to blow up in production.
-# fonts-dejavu   Fallback for Latin text and symbols.
+# fonts-dejavu   Fallback for Latin text and symbols; also the Latin font that
+#                pdf_watermark / pdf_page_numbers draw with.
+# fonts-droid-fallback  The CJK font pdf_watermark / pdf_page_numbers draw with
+#                (Apache-2.0). Noto CJK is OpenType/CFF, which reportlab cannot
+#                embed; this one is TrueType, so the drawn text is embedded as a
+#                subset. Without it Chinese falls back to a non-embedded CID font.
 #
 # This layer grows the image from ~200MB to ~1.2GB; that is the price of
 # layout-faithful conversion.
@@ -38,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         poppler-utils \
         fonts-noto-cjk \
         fonts-dejavu-core \
+        fonts-droid-fallback \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -37,6 +37,7 @@ from src.domain.convert.registry import (
 )
 from src.domain.convert.service import convert_artifact, resolve_artifact_input
 from src.domain.convert.types import FALLBACK_NAME, mime_type_for
+from src.fastmcp_tools.pdf_secure_tools import register_pdf_secure_tools
 from src.log import get_mcptools_logger
 
 logger = get_mcptools_logger()
@@ -405,34 +406,6 @@ def register_morphyard_tools(mcp: FastMCP):
             result.append(File(data=blob, format="pdf", name=f"{source.name}_{label}"))
         return result
 
-    # ------------------------------------------------------------------
-    # pdf_merge is deliberately not exposed as an MCP tool
-    #
-    # The host's file-injection mechanism can inject only **one** file per
-    # call. This is a structural limit, not a difference in convention. The
-    # injection logic looks roughly like this:
-    #
-    #   for key, value in list(tool_args.items()):
-    #       if not isinstance(value, str):     # <- list parameters are skipped
-    #           continue
-    #       ...
-    #       tool_args["file_content"] = b64            # <- overwritten, last one wins
-    #       tool_args.setdefault("file_name", key)     # <- first one wins
-    #
-    # Two consequences:
-    #   1. No List[str] parameter is ever filled, so a merge tool never receives
-    #      its files
-    #   2. Even if the model puts two upload references into two different string
-    #      parameters, the result is file_content from B and file_name from A,
-    #      mismatched, with no warning
-    #
-    # The merge logic itself is implemented and tested
-    # (src/domain/convert/pdfops.merge_pdfs). Once the host supports multi-file
-    # injection, a thin wrapper here is all that is needed. Until then it stays
-    # unregistered: a tool that structurally cannot receive its input only makes
-    # the model retry and report failure.
-    # ------------------------------------------------------------------
-
     @mcp.tool(output_schema=None)
     async def pdf_rotate(
         degrees: Annotated[int, Field(
@@ -456,30 +429,13 @@ def register_morphyard_tools(mcp: FastMCP):
             File(data=data, format="pdf", name=f"{source.name}_rotated"),
         ]
 
-    @mcp.tool(output_schema=None)
-    async def pdf_protect(
-        password: Annotated[str, Field(description="Password required to open the PDF")],
-        file_content: _FILE_CONTENT = None,
-        file_name: _FILE_NAME = None,
-        mime_type: _MIME_TYPE = None,
-    ) -> list:
-        """Add an open password to a PDF (AES-256 encryption).
+    # pdf_compress, pdf_protect, pdf_unlock, pdf_metadata, pdf_strip_metadata
+    # live in pdf_secure_tools.py (pikepdf)
+    register_pdf_secure_tools(mcp)
 
-        The password appears in the conversation history; remind the user not to
-        reuse a password from another system.
-        """
-        source = resolve_artifact_input(file_content, file_name, mime_type)
-        if source.fmt != "pdf":
-            return [f"This is not a PDF (detected {source.fmt})."]
-
-        async with conversion_slot():
-            data = await pdfops.encrypt_pdf(source.data, password)
-        return [
-            "Encrypted. The open password is the one the user specified; remind them "
-            "to keep it safe (it now appears in the conversation, so it is best not "
-            "to reuse a password from another system).",
-            File(data=data, format="pdf", name=f"{source.name}_protected"),
-        ]
+    # pdf_merge, pdf_delete_pages, pdf_reorder_pages, pdf_watermark, pdf_page_numbers
+    from src.fastmcp_tools.pdf_page_tools import register_pdf_page_tools
+    register_pdf_page_tools(mcp)
 
     # PDF pages <-> images (1.3), kept in their own module
     from src.fastmcp_tools.pdf_image_tools import register_pdf_image_tools
