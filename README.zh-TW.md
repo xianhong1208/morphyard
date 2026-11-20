@@ -51,7 +51,7 @@ FILE  file:///report.pdf  application/pdf  23963 bytes
 
 ## 主要特色
 
-- **所有工具，一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`、`pdf_unlock`、`pdf_compress`、`pdf_metadata`、`pdf_strip_metadata`，以及頁面工具 `pdf_merge`、`pdf_delete_pages`、`pdf_reorder_pages`、`pdf_watermark`、`pdf_page_numbers`。每個單檔工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對它們都適用；`pdf_merge` 則接收一個 `{file_content, file_name}` 的清單。
+- **所有工具，一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`、`pdf_unlock`、`pdf_compress`、`pdf_metadata`、`pdf_strip_metadata`，以及頁面工具 `pdf_merge`、`pdf_delete_pages`、`pdf_reorder_pages`、`pdf_watermark`、`pdf_page_numbers`、`pdf_to_images`、`images_to_pdf`。每個單檔工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對它們都適用；`pdf_merge` 則接收一個 `{file_content, file_name}` 的清單。
 - **PDF 頁面工具。** 依序合併多個 PDF，每個檔案一個書籤；刪除頁面；重排頁序（每頁都必須列出一次，不會不小心遺失頁面）；加上文字或圖片浮水印（置中、對角線或平鋪，可設透明度、顏色與角度）；加上頁碼（`{page} / {total}`）、頁首與頁尾。浮水印與頁碼依讀者看到的方向擺正，頁面大小不一或有旋轉的頁面也一樣；中文以內嵌字型繪製。
 - **PDF 壓縮、密碼與中繼資料。** `pdf_compress` 縮小 PDF（無損重整，或在 `balanced` / `small` 等級把圖片降解析度並重新編碼），並回報前後大小；`pdf_protect` 以 AES-256 設定開啟密碼，以及／或由擁有者密碼保護的權限（列印、複製、修改、註解、填寫表單）；`pdf_unlock` 憑密碼移除它們；`pdf_metadata` 回報 Info、XMP、加密、腳本與附件；`pdf_strip_metadata` 移除它們。
 - **六個引擎，依 fidelity 挑選。** LibreOffice 負責版面保真的 Office ↔ PDF，Pandoc 負責保留結構的文字格式，[firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) 負責快速的文件 → Markdown 抽取，Tesseract 負責 OCR，Pillow 負責圖片，另有一個輕量文字引擎處理 JSON / XML / TSV。缺少的引擎會在啟動時停用對應路徑，而不是在請求時才失敗。

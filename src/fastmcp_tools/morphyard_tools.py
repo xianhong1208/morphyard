@@ -437,4 +437,8 @@ def register_morphyard_tools(mcp: FastMCP):
     from src.fastmcp_tools.pdf_page_tools import register_pdf_page_tools
     register_pdf_page_tools(mcp)
 
+    # PDF pages <-> images (1.3), kept in their own module
+    from src.fastmcp_tools.pdf_image_tools import register_pdf_image_tools
+    register_pdf_image_tools(mcp)
+
     logger.info("Morphyard MCP tools registered")

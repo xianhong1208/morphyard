@@ -220,6 +220,29 @@ async def main():
         assert all(row.split()[-5] == "yes" for row in rows), fonts   # the emb column
         print(f"  -> header and numbers drawn with embedded fonts ({len(rows)} fonts)")
 
+        # -- Scenario 8: "send me page 1 as a picture" --
+        print("\n=== Scenario 8: 'page 1 as a picture' -> pdf_to_images ===")
+        r = await client.call_tool("pdf_to_images", {
+            "pages": "1", "dpi": 100,
+            "file_content": base64.b64encode(pdf_bytes).decode(),
+            "file_name": "report.pdf", "mime_type": "application/pdf",
+        })
+        for b in r.content:
+            print("  " + describe(b))
+        got = save_files(r, "page")
+        assert got and got[0][1].startswith(b"\x89PNG"), "returned file is not a PNG"
+
+        # -- Scenario 9: "put that picture back into a PDF" --
+        print("\n=== Scenario 9: 'make a PDF of this picture' -> images_to_pdf ===")
+        r = await client.call_tool("images_to_pdf", {
+            "page_size": "a4", "file_content": base64.b64encode(got[0][1]).decode(),
+            "file_name": "report_p1.png",
+        })
+        for b in r.content:
+            print("  " + describe(b))
+        got = save_files(r, "imaged")
+        assert got and got[0][1].startswith(b"%PDF-"), "returned file is not a PDF"
+
     print(f"\nAll scenarios passed. Output files are in {WORK}")
 
 

@@ -18,9 +18,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `pdf_metadata` (#30): reports a PDF's version, page count, encryption (method, permissions, whether it needs a password), Info dictionary, XMP properties, annotation authors, JavaScript and actions, embedded files and forms, without changing it. A password-protected file reports only that it needs its password, which can be passed in.
 - `pdf_strip_metadata` (#30): returns a copy without the Info dictionary, any XMP stream (document, pages, images) or application data (PieceInfo), with a new file identifier; annotation author names and dates are removed too (`remove_annotation_authors`, on by default; form field names are kept). `remove_javascript` and `remove_attachments` also drop document scripts and actions, and embedded files.
 - New dependency: pikepdf (MPL-2.0, bundles qpdf).
+- `pdf_to_images` (#31): render PDF pages as PNG, JPEG or WebP with Poppler's `pdftoppm`, one image per page. Options: `image_format`, `dpi` (36–300, default 150), `pages` (at most 50 per call), `quality`. A page that would exceed 25 megapixels is rendered at a lower DPI and the reply says which. One page comes back as the image, several as one ZIP (`<name>_p01.png`, …); the images may total 50 MB. Password-protected PDFs are refused.
+- `images_to_pdf` (#32): one image, a multi-page TIFF or a ZIP of images (natural file-name order, non-images skipped and listed) → one PDF, a page per image. `page_size` `fit` / `a4` / `letter`, `orientation` `auto` / `portrait` / `landscape`, `margin_mm`. EXIF orientation is applied, JPEGs are embedded unchanged, other images losslessly, transparency becomes white. Limits: 100 pages, 50 megapixels per image, 400 in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output.
 
 ### Changed
 - `pdf_protect` (#29) now uses pikepdf and can set permissions: `allow_print`, `allow_copy`, `allow_modify`, `allow_annotate`, `allow_fill_forms` under an `owner_password` (required for any restriction, and different from the open password). `password` (the open password) is now optional, so a PDF can be readable by anyone but not printable or copyable; called as before with only `password`, it does what it did. Still AES-256. An already encrypted PDF is refused with a pointer to `pdf_unlock`.
+
+### Fixed
+- `convert_document` from an image to PDF returned the picture's OCR text in a PDF (png → txt → docx → pdf). It now puts the picture on a page of its own size (new engine `images-to-pdf`). From PDF to an image format, its error now names `pdf_to_images`.
 
 ### Documentation
 - README's Licence section lists the licences of the conversion engines in the Docker image.
