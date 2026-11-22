@@ -29,6 +29,7 @@ from src.domain.convert.engines.text import (
 from src.domain.convert.engines.text import (
     TextEngine,
 )
+from src.domain.convert.pdf_images import ImagesToPdfEngine
 from src.domain.convert.types import (
     IMAGE_FORMATS,
     NoConversionPathError,
@@ -77,6 +78,7 @@ ENGINES: dict[str, ConversionEngine] = {
     "pillow": ImageEngine(),
     "ocr": OcrEngine(),
     "text": TextEngine(),
+    "images-to-pdf": ImagesToPdfEngine(),
 }
 
 
@@ -164,6 +166,14 @@ def _build_direct_routes() -> dict[tuple[str, str], Route]:
         for dst in IMAGE_FORMATS:
             if src != dst:
                 add(src, dst, "pillow", FIDELITY_HIGH)
+
+    # --- Image -> PDF: the picture on a page of its own size ---
+    # Without this, png -> pdf went png ->(OCR)-> txt -> docx -> pdf and handed back
+    # the recognised text instead of the picture. The images_to_pdf tool adds A4 /
+    # Letter pages, margins and ZIPs of several images.
+    for src in sorted(IMAGE_FORMATS):
+        add(src, "pdf", "images-to-pdf", FIDELITY_HIGH,
+            "one page per image (every page of a TIFF)")
 
     return routes
 
@@ -334,6 +344,11 @@ def plan_conversion(src: str, dst: str, prefer_fidelity: bool = True) -> list[Ro
     # Rule 2: enumerate multi-hop paths, sorted by (quality desc, hops asc)
     paths = _search_paths(src, dst, MAX_HOPS)
     if not paths:
+        if src == "pdf" and dst in IMAGE_FORMATS:
+            raise NoConversionPathError(src, dst, hint=(
+                "To turn PDF pages into images, call the pdf_to_images tool instead "
+                "(PNG, JPEG or WebP; one image per page)."
+            ))
         raise NoConversionPathError(src, dst)
 
     # Ranking priority: quality > hop count > pivot preference

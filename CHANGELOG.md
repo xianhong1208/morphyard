@@ -6,6 +6,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-22
+
+### Added
+- `pdf_merge` (#24): merge 2–20 PDFs (50 MB together) in the given order into one. Each file gets a top-level bookmark named after it, with its own bookmarks nested underneath (`bookmarks=false` to skip). The files come as a list of `{file_content, file_name}` items in base64, since a host's upload injection fills only one file per call.
+- `pdf_delete_pages` and `pdf_reorder_pages` (#26). Delete takes a page selection (`2,5-7`) and refuses to delete every page. Reorder takes the complete new order (`3,1,2,4-10`; a descending range such as `10-1` runs backwards; `reverse`) and refuses an order that leaves out or repeats a page, naming which. Bookmarks follow their pages.
+- `pdf_watermark` (#25): a text watermark (font size, opacity, rotation, colour as hex or name) or a PNG/JPEG image watermark (`watermark_image`, base64; transparency kept; `image_scale`), in the centre, along the page diagonal or tiled, on all pages or a page selection.
+- `pdf_page_numbers` (#28): page numbers in a format such as `{page} / {total}` or `第 {page} 頁`, in one of six positions, with a start number, an option to skip the first page and a page selection, plus header and footer text (left, centre or right; `{page}`/`{total}` allowed), font size, margin and colour.
+- Watermarks, numbers, headers and footers are placed upright as the reader sees each page, on mixed page sizes and rotated pages. Text in Chinese, Japanese and Korean is drawn with Droid Sans Fallback and Latin text with DejaVu Sans, embedded as subsets. New dependency: reportlab (BSD); the Docker image adds `fonts-droid-fallback` (Apache-2.0).
+- Limits for the page tools: 2,000 pages per document, 100 MB output, 200 characters of text, watermark images up to 10 MB and 40 megapixels. Encrypted PDFs are refused with a message saying to remove the password first.
+- `pdf_compress` (#27): makes a PDF smaller with pikepdf/qpdf, no Ghostscript. `lossless` only restructures (object streams, Flate recompression, unused objects dropped; pages look identical); `balanced` also downsamples images above 150 DPI and re-encodes them as JPEG quality 75; `small` goes to 96 DPI and quality 50 (`max_dpi` / `jpeg_quality` override). The DPI is measured from where each image is painted on the page, form XObjects included. 1-, 2- and 4-bit images, CMYK, colour-key masks and decode arrays are left alone, and a re-encoded image is kept only if it is at least 10 % smaller. The answer gives the sizes before and after; if the file is not at least 1 % smaller, the original comes back unchanged and the answer says so. Measured: an 11.0 MB six-page 300 DPI scan → 1.8 MB (`balanced`) / 0.64 MB (`small`); a 15-page LibreOffice PDF in Chinese 310 → 224 KB at every level (text identical).
+- `pdf_unlock` (#29): removes a PDF's password and permission restrictions, given its password. The owner password always unlocks; the open password unlocks only a file whose owner set no restrictions. A wrong password gets one plain message, the same for every kind of file.
+- `pdf_metadata` (#30): reports a PDF's version, page count, encryption (method, permissions, whether it needs a password), Info dictionary, XMP properties, annotation authors, JavaScript and actions, embedded files and forms, without changing it. A password-protected file reports only that it needs its password, which can be passed in.
+- `pdf_strip_metadata` (#30): returns a copy without the Info dictionary, any XMP stream (document, pages, images) or application data (PieceInfo), with a new file identifier; annotation author names and dates are removed too (`remove_annotation_authors`, on by default; form field names are kept). `remove_javascript` and `remove_attachments` also drop document scripts and actions, and embedded files.
+- New dependency: pikepdf (MPL-2.0, bundles qpdf).
+- `pdf_to_images` (#31): render PDF pages as PNG, JPEG or WebP with Poppler's `pdftoppm`, one image per page. Options: `image_format`, `dpi` (36–300, default 150), `pages` (at most 50 per call), `quality`. A page that would exceed 25 megapixels is rendered at a lower DPI and the reply says which. One page comes back as the image, several as one ZIP (`<name>_p01.png`, …); the images may total 50 MB. Password-protected PDFs are refused.
+- `images_to_pdf` (#32): one image, a multi-page TIFF or a ZIP of images (natural file-name order, non-images skipped and listed) → one PDF, a page per image. `page_size` `fit` / `a4` / `letter`, `orientation` `auto` / `portrait` / `landscape`, `margin_mm`. EXIF orientation is applied, JPEGs are embedded unchanged, other images losslessly, transparency becomes white. Limits: 100 pages, 50 megapixels per image, 400 in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output.
+
+### Changed
+- `pdf_protect` (#29) now uses pikepdf and can set permissions: `allow_print`, `allow_copy`, `allow_modify`, `allow_annotate`, `allow_fill_forms` under an `owner_password` (required for any restriction, and different from the open password). `password` (the open password) is now optional, so a PDF can be readable by anyone but not printable or copyable; called as before with only `password`, it does what it did. Still AES-256. An already encrypted PDF is refused with a pointer to `pdf_unlock`.
+
+### Fixed
+- `convert_document` from an image to PDF returned the picture's OCR text in a PDF (png → txt → docx → pdf). It now puts the picture on a page of its own size (new engine `images-to-pdf`). From PDF to an image format, its error now names `pdf_to_images`.
+
+### Documentation
+- README's Licence section lists the licences of the conversion engines in the Docker image.
+
 ## [1.2.2] — 2026-11-13
 
 ### Changed

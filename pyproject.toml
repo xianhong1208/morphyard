@@ -1,6 +1,6 @@
 [project]
 name = "morphyard"
-version = "1.2.2"
+version = "1.3.0"
 description = "Morphyard - document conversion MCP server (Office, PDF, Markdown, images, OCR) protected by MCP Gate OAuth 2.1"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,6 +21,8 @@ dependencies = [
     "firecrawl-anydoc>=0.1.8",   # document -> Markdown (Rust, MIT)
     "pypdf>=5.0.0",              # PDF split / merge / rotate / encrypt
     "pillow>=13.0.0",            # image conversion (13.0 fixes the 12.x advisories)
+    "pikepdf>=10.0.0",           # PDF compress / unlock / permissions / metadata (MPL-2.0, bundles qpdf)
+    "reportlab>=4.4",            # text and image overlays for PDF watermarks and page numbers (BSD)
 ]
 # Stateless service: no sqlalchemy / alembic / psycopg2
 

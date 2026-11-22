@@ -51,7 +51,9 @@ And `extract_text` on the same file returns Markdown for the model to read:
 
 ## Key features
 
-- **Eight tools, one contract.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`. Every tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them.
+- **One contract for every tool.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`, `pdf_unlock`, `pdf_compress`, `pdf_metadata`, `pdf_strip_metadata`, and the page tools `pdf_merge`, `pdf_delete_pages`, `pdf_reorder_pages`, `pdf_watermark`, `pdf_page_numbers`, `pdf_to_images`, `images_to_pdf`. Every single-file tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them; `pdf_merge` takes a list of `{file_content, file_name}` items instead.
+- **PDF page tools.** Merge PDFs in order with one bookmark per file; delete pages; put pages in a new order (every page listed once, so none is lost by accident); add a text or image watermark (centre, diagonal or tiled, with opacity, colour and rotation); add page numbers (`{page} / {total}`), a header and a footer. Watermarks and page numbers sit upright as the reader sees each page, on mixed page sizes and rotated pages, and Chinese text is drawn with an embedded font.
+- **PDF compression, passwords and metadata.** `pdf_compress` shrinks a PDF (lossless restructuring, or images downsampled and re-encoded at `balanced` / `small`) and reports the sizes; `pdf_protect` sets an AES-256 open password and/or permissions (print, copy, modify, annotate, fill forms) under an owner password; `pdf_unlock` removes them given the password; `pdf_metadata` reports Info, XMP, encryption, scripts and attachments; `pdf_strip_metadata` removes them.
 - **Six engines, chosen by fidelity.** LibreOffice for layout-faithful Office ↔ PDF, Pandoc for structure-preserving text formats, [firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) for fast document → Markdown extraction, Tesseract for OCR, Pillow for images, and a thin text engine for JSON / XML / TSV. A missing engine disables its paths at startup instead of failing at request time.
 - **Multi-hop planning that says what it costs.** When no engine converts A → B directly, the registry searches up to three hops, ranked by fidelity. Lossy hops are allowed by default but flagged in the result so the model can tell the user; pass `allow_quality_loss=false` to refuse any path that would lose layout.
 - **Format detection without a file name.** Extension → MIME → container inspection (ZIP directory / OLE2 streams) → magic bytes. Sixteen formats are recognised with no name and no MIME type at all.
@@ -63,7 +65,7 @@ Supported: pdf, docx, doc, odt, rtf, epub; xlsx, xls, ods, csv, tsv; pptx, ppt, 
 
 ## Installation
 
-**Prerequisites:** Python 3.13+ and [uv](https://docs.astral.sh/uv/). The Python engines (`firecrawl-anydoc`, `pypdf`, `pillow`) install with `uv sync`; the others are system packages:
+**Prerequisites:** Python 3.13+ and [uv](https://docs.astral.sh/uv/). The Python engines (`firecrawl-anydoc`, `pypdf`, `pikepdf`, `pillow`) install with `uv sync`; the others are system packages:
 
 ```bash
 # Debian / Ubuntu
@@ -143,7 +145,7 @@ Either way, `MORPHYARD_BASE_URL` must be the address clients use, because the to
 
 | Document | What is in it |
 |---|---|
-| [Tools and formats](docs/tools.md) | The eight tools, supported formats, how a conversion runs, known limits |
+| [Tools and formats](docs/tools.md) | The tools, supported formats, how a conversion runs, known limits |
 | [Configuration](docs/configuration.md) | Environment variables, concurrent conversions and the MCP Gate revocation feed |
 | [Architecture](docs/architecture.md) | Module layout, engines and fidelity, format detection, conversion planning, test layers |
 | [Development](docs/development.md) | Setting up, the three test layers, CI, how to contribute |
@@ -157,3 +159,15 @@ Bug reports and pull requests are welcome. Pull requests go into `dev`; run `uv 
 ## Licence
 
 [MIT](LICENSE)
+
+### Third-party licences
+
+Morphyard's own code is MIT, and it uses no AGPL library (no PyMuPDF, no Ghostscript). It runs the
+conversion engines as separate programs; the Docker image ships them unmodified, each under its own
+licence: LibreOffice (MPL-2.0), Pandoc (GPL-2.0-or-later), Poppler's utilities (GPL), Tesseract
+(Apache-2.0) and the Noto CJK fonts (SIL OFL 1.1). These licences cover the tools, not the files
+you convert with them. The PDF page tools draw text with reportlab (BSD) and embed subsets of
+DejaVu Sans (Bitstream Vera licence) and Droid Sans Fallback (Apache-2.0), both of which allow
+embedding.
+you convert with them. The Python library pikepdf (MPL-2.0), used for PDF compression,
+encryption and metadata, bundles qpdf (Apache-2.0).

@@ -11,6 +11,7 @@ src/
 │   ├── registry.py         Route table and conversion planning (the capability boundary)
 │   ├── service.py          base64 input → planned path → output
 │   ├── pdfops.py           PDF-only operations (split / extract / rotate / encrypt / images)
+│   ├── pdf_secure.py       pikepdf: compress / protect + permissions / unlock / metadata
 │   └── engines/
 │       ├── base.py           Engine interface, subprocess execution with timeout, temporary workspace
 │       ├── discovery.py      Cross-platform executable lookup (PATH plus known install locations)
@@ -22,7 +23,8 @@ src/
 │       └── text.py           JSON / XML / TSV → Markdown
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/
-    └── morphyard_tools.py     MCP tool layer
+    ├── morphyard_tools.py     MCP tool layer
+    └── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
 ```
 
 Dependencies point strictly downward. The tool layer never touches base64 payloads or engines; it talks only to `service.py`. `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
@@ -39,6 +41,7 @@ Six engines, each with a fixed fidelity level. Fidelity is not a descriptive lab
 | firecrawl | `lossy` | Text and tables only | Extracting PDF, Excel, PowerPoint and EPUB content for a model to read |
 | Tesseract | `lossy` | Text only | OCR of images and scanned PDFs |
 | TextEngine | `lossy` | Raw text | Lightweight wrapping of JSON / XML / TSV |
+| images-to-pdf | `high` | Pixels (JPEGs byte for byte) | One image (every page of a TIFF) → PDF, a page per image; also behind the `images_to_pdf` tool (`pdf_images.py`) |
 
 **Untrusted documents and LibreOffice.** LibreOffice loads what a document links to while opening it, so `libreoffice.py` writes a `registrymodifications.xcu` into each conversion's fresh profile: `BlockUntrustedRefererLinks` on (no trusted locations are configured), every HTTP/HTTPS/FTP request routed to the unreachable proxy `proxy.invalid` (and the same as `*_proxy` in soffice's environment, with `no_proxy` removed), link updates off, macros off. The block is not honoured everywhere: Calc and Impress load ODF images linked by path, and the RTF importer reads `INCLUDEPICTURE` files. `external_refs.py` therefore removes outside references before soffice runs, chosen by content because soffice detects the type itself (an ODP named `.pptx` is opened as ODP): every zip has its `.rels` parts rebuilt without external non-hyperlink relationships and its XML parts cut free of `xlink:href` / `xml:base` / `form:image-data` values that do not resolve inside the package (byte-level cuts, because ODF formulas use namespace prefixes inside attribute values that a re-serialiser would drop); anything with `\fldinst` has its linking field instructions emptied. Binary `doc` / `xls` / `ppt` cannot be rewritten; the profile's block is what stops their links, verified with linked images in each. A package that cannot be parsed is refused, since LibreOffice repairs zips and reads XML this parser rejects. `tests/test_libreoffice_isolation.py` holds the probes.
 
@@ -139,7 +142,11 @@ Measured result: sixteen formats are recognised correctly with neither `file_nam
 | `pdf_extract_pages` | Pick or reorder pages | File |
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
-| `pdf_protect` | AES-256 encryption | File |
+| `pdf_protect` | AES-256: open password and/or permissions under an owner password | File |
+| `pdf_unlock` | Remove the password and permissions, given the password | File |
+| `pdf_compress` | Make a PDF smaller (`lossless` / `balanced` / `small`) | File |
+| `pdf_metadata` | Info, XMP, version, pages, encryption, scripts, attachments | Text |
+| `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
 
 `convert_document` returns a file; `extract_text` returns text. The guidance that tells a model which to choose lives in `config/instructions.md`.
 

@@ -191,6 +191,58 @@ async def main():
                                    {"source_format": "docx"})
         print("  " + r.content[0].text[:200])
 
+        # -- Scenario 7: "merge these two and number the pages" --
+        # Exercises the image's fonts: the Chinese header must come out as text with
+        # every font embedded (fonts-droid-fallback), not as a substituted CID font.
+        print("\n=== Scenario 7: 'merge these and number the pages' -> pdf_merge, "
+              "pdf_page_numbers ===")
+        pdf_b64 = base64.b64encode(pdf_bytes).decode()
+        r = await client.call_tool("pdf_merge", {"files": [
+            {"file_content": pdf_b64, "file_name": "第一份.pdf"},
+            {"file_content": pdf_b64, "file_name": "second.pdf"},
+        ]})
+        print("  " + describe(r.content[0]))
+        merged = save_files(r, "merged")[0][1]
+        r = await client.call_tool("pdf_page_numbers", {
+            "number_format": "{page} / {total}", "header_text": "供應商評估 Vendor Review",
+            "file_content": base64.b64encode(merged).decode(), "file_name": "merged.pdf",
+        })
+        print("  " + describe(r.content[0]))
+        numbered_path, _ = save_files(r, "numbered")[0]
+        text = subprocess.run(["pdftotext", str(numbered_path), "-"], capture_output=True,
+                              text=True, check=True).stdout
+        # pdftotext may drop the spaces around the slash; the glyphs are what matter
+        assert "供應商評估 Vendor Review" in text and "1/2" in text.replace(" ", ""), text[:300]
+        fonts = subprocess.run(["pdffonts", str(numbered_path)], capture_output=True,
+                               text=True, check=True).stdout
+        rows = fonts.splitlines()[2:]
+        assert any("DroidSansFallback" in row for row in rows), fonts
+        assert all(row.split()[-5] == "yes" for row in rows), fonts   # the emb column
+        print(f"  -> header and numbers drawn with embedded fonts ({len(rows)} fonts)")
+
+        # -- Scenario 8: "send me page 1 as a picture" --
+        print("\n=== Scenario 8: 'page 1 as a picture' -> pdf_to_images ===")
+        r = await client.call_tool("pdf_to_images", {
+            "pages": "1", "dpi": 100,
+            "file_content": base64.b64encode(pdf_bytes).decode(),
+            "file_name": "report.pdf", "mime_type": "application/pdf",
+        })
+        for b in r.content:
+            print("  " + describe(b))
+        got = save_files(r, "page")
+        assert got and got[0][1].startswith(b"\x89PNG"), "returned file is not a PNG"
+
+        # -- Scenario 9: "put that picture back into a PDF" --
+        print("\n=== Scenario 9: 'make a PDF of this picture' -> images_to_pdf ===")
+        r = await client.call_tool("images_to_pdf", {
+            "page_size": "a4", "file_content": base64.b64encode(got[0][1]).decode(),
+            "file_name": "report_p1.png",
+        })
+        for b in r.content:
+            print("  " + describe(b))
+        got = save_files(r, "imaged")
+        assert got and got[0][1].startswith(b"%PDF-"), "returned file is not a PDF"
+
     print(f"\nAll scenarios passed. Output files are in {WORK}")
 
 

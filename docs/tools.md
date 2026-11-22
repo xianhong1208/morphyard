@@ -13,7 +13,32 @@
 | `pdf_extract_pages` | Pick or reorder pages | File |
 | `pdf_split` | Split into several files | Files |
 | `pdf_rotate` | Rotate selected pages | File |
-| `pdf_protect` | AES-256 encryption | File |
+| `pdf_protect` | AES-256: open password and/or permissions under an owner password | File |
+| `pdf_unlock` | Remove the password and permissions, given the password | File |
+| `pdf_compress` | Make a PDF smaller (`lossless` / `balanced` / `small`) | File |
+| `pdf_metadata` | Info, XMP, version, pages, encryption, scripts, attachments | Text |
+| `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
+| `pdf_merge` | Merge 2–20 PDFs in order, one bookmark per file | File |
+| `pdf_delete_pages` | Remove selected pages | File |
+| `pdf_reorder_pages` | Put every page in a new order (`3,1,2,4-10`, `10-1`, `reverse`) | File |
+| `pdf_watermark` | Text or image (PNG/JPEG) watermark: centre, diagonal or tiled; opacity, colour, rotation; all or chosen pages | File |
+| `pdf_page_numbers` | Page numbers (`{page}`, `{total}`), header and footer text; position, start number, skip the first page, font size, margin | File |
+| `pdf_to_images` | Render pages as PNG, JPEG or WebP, one image per page | File (one page) or ZIP |
+| `images_to_pdf` | One image, a multi-page TIFF or a ZIP of images → one PDF, a page per image | File |
+
+**PDF pages to images.** `pdf_to_images` renders with Poppler's `pdftoppm`: `image_format` `png` (default), `jpg` or `webp`; `dpi` 36–300 (default 150); `pages` like `1-3,7` (empty = all, at most 50 per call); `quality` 1–95 for JPEG / WebP. A page that would exceed 25 megapixels at the requested DPI is rendered at a lower DPI, and the reply says so. One page comes back as the image; several come back as one ZIP (`<name>_p01.png`, …), because some clients turn image resources into model input and a ZIP is one download. The images together may not exceed 50 MB. Password-protected PDFs are refused (a PDF with only an owner password renders). `convert_document` from PDF to an image format points the model at this tool.
+
+**Images to a PDF.** `images_to_pdf` takes one file: an image (PNG, JPEG, WebP, TIFF, GIF, BMP), every page of a multi-page TIFF, the first frame of a GIF / WebP animation, or a ZIP of images whose pages follow the file names in natural order (`page2` before `page10`; non-images, `__MACOSX/` and hidden files are skipped and listed). `page_size` `fit` (default, each page the size of its image at the resolution the file records, else 96 DPI), `a4` or `letter` (image scaled to fit inside the margins and centred); `orientation` `auto` (landscape for wide images), `portrait` or `landscape`; `margin_mm` 0–50 (default 0 for `fit`, 10 otherwise). EXIF orientation is applied; JPEGs (and the main image of a camera MPO file) are embedded byte for byte, with the orientation applied by the placement on the page; other images are stored losslessly; transparency becomes white; a matching ICC profile is kept. Limits: 100 pages, 50 megapixels per image, 400 megapixels in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output. HEIC / AVIF are not read yet (1.6). `convert_document` from one image to `pdf` uses the same code with `fit` pages; before, it OCRed the picture and returned its text in a PDF.
+
+### PDF page tools
+
+- **Input.** `pdf_merge` takes `files`, a list of `{file_content, file_name}` items (base64), because a host's upload injection fills only one `file_content` per call: the caller passes the bytes itself. The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
+- **Pages.** Page selections use the same 1-based syntax as `pdf_extract_pages` (`1-3,7,10-`). `pdf_reorder_pages` insists that every page appears exactly once and names the missing or repeated ones; use `pdf_delete_pages` to drop pages.
+- **Kept.** Merge nests each file's bookmarks under a bookmark named after the file. Delete and reorder keep the bookmarks whose page survives, pointing at its new place. Watermark and page numbers keep bookmarks, links, form fields and metadata.
+- **Placement.** Watermarks, numbers, headers and footers are drawn in the page as the reader sees it (the crop box, turned by the page's rotation), so they sit upright on landscape and rotated pages and on documents that mix page sizes. A single watermark or a header too long for the page is shrunk to fit.
+- **Numbering.** Only stamped pages are counted: `{page}` runs `start_number`, `start_number + 1`, … over them and `{total}` is the last number shown, so skipping a cover gives "1 / 9" … "9 / 9" on a 10-page file.
+- **Fonts.** Text is drawn with DejaVu Sans (Latin) and Droid Sans Fallback (Chinese, Japanese, Korean), embedded as subsets, switching per run of characters. Noto CJK cannot be used here: it is OpenType/CFF, which reportlab cannot embed. Without Droid Sans Fallback installed, CJK text uses a non-embedded CID font and viewers substitute their own.
+- **Limits.** Merge: 2–20 files, 50 MB together. Every page tool: 2,000 pages per document, 100 MB output, 200 characters of text, watermark image 10 MB / 40 megapixels. Encrypted PDFs are refused; remove the password first.
 
 **Supported formats**
 
@@ -26,6 +51,16 @@
 | Images | png, jpg, webp, gif, bmp, tiff |
 
 Not supported: audio, video, archives, CAD, executables. The tool descriptions and [`config/instructions.md`](../config/instructions.md) tell the model to say so instead of retrying.
+
+## PDF compression, passwords and metadata
+
+- **`pdf_compress`** — `lossless` restructures the file only (object streams, recompressed streams, unused objects removed): pages are unchanged. `balanced` (default) also downsamples images above 150 DPI and re-encodes them as JPEG quality 75; `small` uses 96 DPI and quality 50. `max_dpi` (36–600) and `jpeg_quality` (10–95) override the level. The DPI is measured from where each image is painted, so an image shown small is downsampled more. Text, fonts and vector graphics are never degraded. If the result is not at least 1 % smaller, the original is returned and the answer says so. Scans shrink most (a six-page 300 DPI scan: 11.0 MB → 1.8 MB balanced, 0.64 MB small); text-only PDFs shrink by restructuring alone (28–51 % on the PDFs measured).
+- **`pdf_protect`** — AES-256. `password` is the open password; `owner_password` guards the permissions `allow_print`, `allow_copy`, `allow_modify`, `allow_annotate`, `allow_fill_forms` (all allowed by default). Any restriction needs an owner password that differs from the open password. In the PDF format the annotate permission includes filling forms, so blocking form filling also needs `allow_annotate=false`. Permissions are honoured by standard readers; they are not DRM.
+- **`pdf_unlock`** — returns an unencrypted copy given the password. The owner password always works; the open password only when nothing is restricted. No password recovery.
+- **`pdf_metadata`** — read only: version, pages, encryption, Info, XMP, annotation authors, scripts and actions, embedded files, forms.
+- **`pdf_strip_metadata`** — always removes the Info dictionary, every XMP stream and PieceInfo, and gives the file a new identifier; by default also annotation author names and dates (not form field names). Optionally scripts and actions (`remove_javascript`) and embedded files (`remove_attachments`). Names written in the page text are not touched.
+
+Every tool except `pdf_unlock` (and `pdf_metadata`, which reports it) refuses an encrypted PDF and points to `pdf_unlock`. Limits: 5,000 pages; images over 100 megapixels are not re-encoded.
 
 ## How it works
 
@@ -51,7 +86,7 @@ The engine table, the planner's rules and the format-detection details are in [d
 
 ## Known limits
 
-- One file per call (no `pdf_merge` tool yet; the merge logic exists in `pdfops`).
+- One file per call, except `pdf_merge`, which takes its files as base64 in a list (a host that can inject only one upload cannot feed it yet; several uploads in one call is planned for 1.4). For several images, `images_to_pdf` takes a ZIP.
 - 50 MB per file, 30 pages per OCR run.
 - A limited number of conversions run at once (by default the CPU count, at most 8); more wait in a queue, and past its length or wait time a tool answers "the server is busy" and should be called again a little later. See [Concurrent conversions](configuration.md#concurrent-conversions).
 - PDF → editable formats is always lossy; tables inside PDFs are recovered heuristically.
