@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-22
+
 ### Added
 - `pdf_merge` (#24): merge 2–20 PDFs (50 MB together) in the given order into one. Each file gets a top-level bookmark named after it, with its own bookmarks nested underneath (`bookmarks=false` to skip). The files come as a list of `{file_content, file_name}` items in base64, since a host's upload injection fills only one file per call.
 - `pdf_delete_pages` and `pdf_reorder_pages` (#26). Delete takes a page selection (`2,5-7`) and refuses to delete every page. Reorder takes the complete new order (`3,1,2,4-10`; a descending range such as `10-1` runs backwards; `reverse`) and refuses an order that leaves out or repeats a page, naming which. Bookmarks follow their pages.
