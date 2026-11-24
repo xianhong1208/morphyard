@@ -1,0 +1,1326 @@
+[
+  {
+    "name": "list_supported_conversions",
+    "title": "List Supported Conversions",
+    "description": "List the conversion pairs this service actually supports.\n\nBefore calling convert_document, use this tool if you are unsure whether a\nconversion is possible. It returns the paths available given the\n**engines actually installed** on this server, not a theoretical list.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set this to see only what one source format can be converted to, e.g. 'docx'"
+        }
+      }
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "inspect_document",
+    "title": "Inspect Document",
+    "description": "Show basic information about an uploaded file: detected format, size,\nand the target formats it can be converted to.\n\nWhen the user uploads a file without saying what to do with it, use this\ntool first to see what you have, then decide which conversion to\nsuggest. For PDFs the page count is also returned.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "convert_document",
+    "title": "Convert Document",
+    "description": "Convert the uploaded file to the given format and return the converted file.\n\nSupports conversions between Office documents, PDF, Markdown, HTML,\nspreadsheets, presentations and images. The source format is detected\nautomatically from the file; no need to specify it.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target_format": {
+          "description": "Target format, e.g. pdf / docx / md / xlsx / png. If unsure whether it is supported, call list_supported_conversions first",
+          "type": "string"
+        },
+        "output_name": {
+          "description": "Output file name without extension. Use the stem of the user's original file name: if the upload is \"Vendor Review 2026.pptx\", pass \"Vendor Review 2026\" so the user recognizes the download. If the user asked for a new name, use that instead.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        },
+        "allow_quality_loss": {
+          "default": true,
+          "description": "Allow layout quality to be sacrificed so the conversion can succeed; allowed by default. The response carries an explicit quality warning that you must relay to the user. Set to False only when the user explicitly says the layout must not be lost, even at the cost of not converting",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "target_format",
+        "output_name"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "extract_text",
+    "title": "Extract Text",
+    "description": "Extract the document's text as Markdown and return it directly (no file).\n\nUse this when you need to *read* the user's uploaded document to answer\nquestions, summarize or analyze it, rather than convert_document: this\ntool returns text you can read directly.\n\nSupports PDF, Word, Excel, PowerPoint, HTML, CSV and images (OCR).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        },
+        "max_chars": {
+          "default": 50000,
+          "description": "Maximum number of characters returned; longer text is truncated. 0 means no limit",
+          "type": "integer"
+        }
+      }
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_extract_pages",
+    "title": "Pdf Extract Pages",
+    "description": "Extract the given pages from a PDF into a new PDF.\n\nPage order matters: pages='3,1' produces a PDF with page 3 first and\npage 1 second, which can be used to reorder pages.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages": {
+          "description": "Page range, 1-based and inclusive. E.g. '1-3,7,10-' means pages 1 to 3, page 7, and page 10 through the last",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      },
+      "required": [
+        "pages"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_split",
+    "title": "Pdf Split",
+    "description": "Split a PDF into several files and return all of them.\n\nNote: a PDF with many pages produces many files. Check the page count\nwith inspect_document first and confirm the split with the user.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages_per_file": {
+          "default": 1,
+          "description": "Pages per output file. 1 means one file per page",
+          "type": "integer"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_rotate",
+    "title": "Pdf Rotate",
+    "description": "Rotate the given pages of a PDF (commonly used to fix wrongly oriented scans).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "degrees": {
+          "description": "Rotation angle, must be a multiple of 90 (90/180/270)",
+          "type": "integer"
+        },
+        "pages": {
+          "default": "",
+          "description": "Page range to rotate, e.g. '1-3'. Empty means all pages",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      },
+      "required": [
+        "degrees"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_compress",
+    "title": "Pdf Compress",
+    "description": "Make a PDF file smaller and return it, with the before/after sizes.\n\nText, vector graphics and fonts are never degraded; only images are\ndownsampled/re-encoded, and only at 'balanced' or 'small'. Scanned or\nphoto-heavy PDFs shrink the most; text-only PDFs shrink a little or not at\nall. If the result is not smaller, the original file is returned unchanged\nand the response says so; tell the user rather than offering it as a\nsmaller file. Password-protected PDFs must be unlocked first (pdf_unlock).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "default": "balanced",
+          "description": "'lossless': restructure only (object streams, recompressed streams, unused objects removed); pages look identical. 'balanced' (default): also downsample images above 150 DPI and re-encode them as JPEG quality 75; good for sharing and email. 'small': images to 96 DPI, JPEG quality 50; smallest, visibly softer images.",
+          "type": "string"
+        },
+        "max_dpi": {
+          "default": 0,
+          "description": "Optional override of the level's image resolution (36-600). 0 = the level's default. Not allowed with 'lossless'.",
+          "type": "integer"
+        },
+        "jpeg_quality": {
+          "default": 0,
+          "description": "Optional override of the level's JPEG quality (10-95). 0 = the level's default. Not allowed with 'lossless'.",
+          "type": "integer"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The PDF uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_protect",
+    "title": "Pdf Protect",
+    "description": "Encrypt a PDF with AES-256: an open password, permission restrictions, or both.\n\n- \"Put a password on this PDF\" -> password only.\n- \"Anyone may read it but not print or copy\" -> owner_password plus\n  allow_print=false, allow_copy=false, no password.\n- Both -> password and owner_password (different) plus the allow_* flags.\n\nPermission restrictions are honoured by standard PDF readers; they are not\nDRM and a determined user with other tools can ignore them, so say so if\nthe user relies on them. An already encrypted PDF must be unlocked first.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "default": "",
+          "description": "Open password: needed to open the PDF at all. Leave empty for a PDF anyone can open but whose permissions are restricted.",
+          "type": "string"
+        },
+        "owner_password": {
+          "default": "",
+          "description": "Owner password: lifts the restrictions later. Required when any allow_* is false, and must differ from the open password. Leave empty when only setting an open password.",
+          "type": "string"
+        },
+        "allow_print": {
+          "default": true,
+          "description": "Readers may print",
+          "type": "boolean"
+        },
+        "allow_copy": {
+          "default": true,
+          "description": "Readers may copy text and images (screen readers keep access either way)",
+          "type": "boolean"
+        },
+        "allow_modify": {
+          "default": true,
+          "description": "Readers may edit the document and insert/delete/rotate pages",
+          "type": "boolean"
+        },
+        "allow_annotate": {
+          "default": true,
+          "description": "Readers may add comments and fill forms",
+          "type": "boolean"
+        },
+        "allow_fill_forms": {
+          "default": true,
+          "description": "Readers may fill in form fields",
+          "type": "boolean"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The PDF uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_unlock",
+    "title": "Pdf Unlock",
+    "description": "Remove the password and permission restrictions from a PDF, given its password.\n\nReturns an unencrypted copy. Only works with the correct password; there is\nno password recovery or guessing. A wrong password gives a plain error; do\nnot retry with guessed passwords, ask the user. If the file is not\nencrypted, nothing is returned but a note saying so.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "description": "The PDF's password, as given by the user. The owner password always works; the open password works when the owner set no permission restrictions.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The PDF uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      },
+      "required": [
+        "password"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_metadata",
+    "title": "Pdf Metadata",
+    "description": "Report a PDF's metadata without changing it.\n\nReturns: pdf_version, page_count, encrypted (+ method, permissions),\ninfo (the document information dictionary: Title, Author, Creator,\nProducer, CreationDate, ModDate...), xmp (XMP properties such as\ndc:creator, xmp:CreatorTool, pdf:Producer), annotations (count and author\nnames), javascript (document scripts, actions), embedded_files, has_form.\nUse it to answer \"who made this / what is hidden in this PDF\", and before\npdf_strip_metadata to show the user what would be removed.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "default": "",
+          "description": "Only for a PDF that needs a password to open; otherwise leave empty",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The PDF uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_strip_metadata",
+    "title": "Pdf Strip Metadata",
+    "description": "Return a copy of the PDF with its metadata removed.\n\nAlways removed: the document information dictionary (Title, Author,\nSubject, Keywords, Creator, Producer, dates), every XMP metadata stream\n(document, pages, images), application private data (PieceInfo), and the\nfile identifier is regenerated. Optional: annotation authors (on by\ndefault), JavaScript, attachments. Page content (text, images, comments'\ntext, form fields) is not changed, and author names written in the page\ntext itself are not detected. Use pdf_metadata first to see what is there.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "remove_annotation_authors": {
+          "default": true,
+          "description": "Remove author names and dates from comments/annotations (the comments themselves stay)",
+          "type": "boolean"
+        },
+        "remove_javascript": {
+          "default": false,
+          "description": "Also remove document JavaScript and actions (open actions, page/field actions). May break interactive forms that calculate",
+          "type": "boolean"
+        },
+        "remove_attachments": {
+          "default": false,
+          "description": "Also remove embedded files and file-attachment annotations",
+          "type": "boolean"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The PDF uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_merge",
+    "title": "Pdf Merge",
+    "description": "Merge several PDFs into one PDF, in the given order.\n\nPass every PDF yourself as base64 in `files` (this tool does not use the\nsingle file_content upload slot of the other tools). If you only hold an\nupload reference and cannot pass the bytes, tell the user merging needs the\nfiles themselves. Encrypted PDFs are refused: remove their password first.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item carries one PDF as base64 in file_content plus its file_name. 2 to 20 files, at most 50 MB together.",
+          "items": {
+            "description": "One PDF to merge",
+            "properties": {
+              "file_content": {
+                "description": "The PDF itself, base64-encoded.",
+                "type": "string"
+              },
+              "file_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for this file in the merged PDF."
+              }
+            },
+            "required": [
+              "file_content"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 2,
+          "type": "array"
+        },
+        "output_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output file name without extension. Default: the first file's name followed by '_merged'."
+        },
+        "bookmarks": {
+          "default": true,
+          "description": "Add one top-level bookmark per input file, named after it, with that file's own bookmarks nested underneath. Default true.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "files"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_delete_pages",
+    "title": "Pdf Delete Pages",
+    "description": "Delete pages from a PDF and return the PDF without them.\n\nBookmarks that pointed at a remaining page are kept. To keep only a few\npages, pdf_extract_pages may be simpler; to change the order, use\npdf_reorder_pages.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages": {
+          "description": "The pages to remove, 1-based and inclusive, e.g. '1-3,7,10-' (pages 1 to 3, page 7, and page 10 through the last). At least one page must remain.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      },
+      "required": [
+        "pages"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_reorder_pages",
+    "title": "Pdf Reorder Pages",
+    "description": "Put the pages of a PDF in a new order (no page added or removed).\n\nEvery page must appear exactly once; a missing or repeated page is refused\nwith the page numbers named, so nothing is lost by accident. To also drop\npages, call pdf_delete_pages first (or pdf_extract_pages, which keeps a\nselection in the order given). Bookmarks follow their pages.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "description": "The complete new page order, 1-based, listing every page exactly once: '3,1,2,4-10' puts page 3 first, then 1 and 2, then 4 to 10. A descending range runs backwards ('10-1'), '5-' means page 5 to the last, and 'reverse' turns the whole document around. Check the page count with inspect_document first.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      },
+      "required": [
+        "order"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_watermark",
+    "title": "Pdf Watermark",
+    "description": "Add a text or image watermark to a PDF, on every page or chosen pages.\n\nThe watermark is drawn over the page content, semi-transparent, upright as\nthe reader sees each page (also on landscape and rotated pages, and on\ndocuments that mix page sizes). Bookmarks, links and form fields are kept.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Watermark text, e.g. 'CONFIDENTIAL' or '機密'. Chinese, Japanese and Korean work. At most 200 characters. Give this or watermark_image, not both."
+        },
+        "watermark_image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An image watermark instead of text: a PNG or JPEG as base64 (a PNG with transparency keeps it). Pass the image bytes yourself; the upload slot is file_content, which holds the PDF. At most 10 MB."
+        },
+        "position": {
+          "default": "diagonal",
+          "description": "'center': one watermark in the middle, turned by `rotation`. 'diagonal': one watermark along the page's corner-to-corner diagonal (ignores `rotation`). 'tiled': repeated across the whole page, turned by `rotation`.",
+          "enum": [
+            "center",
+            "diagonal",
+            "tiled"
+          ],
+          "type": "string"
+        },
+        "rotation": {
+          "default": 45,
+          "description": "Angle in degrees, counter-clockwise, for 'center' and 'tiled'. 0 is horizontal.",
+          "type": "number"
+        },
+        "font_size": {
+          "default": 48,
+          "description": "Text size in points (6-300). A single watermark too long for the page is shrunk to fit.",
+          "type": "number"
+        },
+        "opacity": {
+          "default": 0.3,
+          "description": "0.05 (barely visible) to 1 (solid). Default 0.3.",
+          "type": "number"
+        },
+        "color": {
+          "default": "#808080",
+          "description": "Text colour: hex such as '#808080' or a name such as 'gray', 'red', 'navy'.",
+          "type": "string"
+        },
+        "image_scale": {
+          "default": 0.5,
+          "description": "Image watermark size as a fraction of the page (0.05-1): the image fits within this share of the page's width and height.",
+          "type": "number"
+        },
+        "pages": {
+          "default": "",
+          "description": "Pages to watermark, 1-based and inclusive, e.g. '1-3,7,10-' (pages 1 to 3, page 7, and page 10 through the last). Empty means every page.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_page_numbers",
+    "title": "Pdf Page Numbers",
+    "description": "Add page numbers, a header and/or a footer to a PDF.\n\nText is placed upright as the reader sees each page, inside the margin,\non portrait, landscape and rotated pages alike, and is shrunk if it would\nnot fit the page's width. The page number and a header or footer cannot\nshare one spot (e.g. both bottom-center): move one, or put {page} into the\nfooter_text and set number_format to an empty string.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "number_format": {
+          "default": "{page}",
+          "description": "Page number text with the placeholders {page} and {total}, e.g. '{page}', '{page} / {total}', 'Page {page} of {total}', '第 {page} 頁'. Empty string: no page numbers (header/footer only).",
+          "type": "string"
+        },
+        "number_position": {
+          "default": "bottom-center",
+          "description": "Where the page number goes.",
+          "enum": [
+            "bottom-center",
+            "bottom-left",
+            "bottom-right",
+            "top-center",
+            "top-left",
+            "top-right"
+          ],
+          "type": "string"
+        },
+        "start_number": {
+          "default": 1,
+          "description": "The number shown on the first numbered page.",
+          "type": "integer"
+        },
+        "skip_first_page": {
+          "default": false,
+          "description": "Leave the first page (e.g. a cover) without number, header or footer; numbering then starts on page 2 with start_number.",
+          "type": "boolean"
+        },
+        "pages": {
+          "default": "",
+          "description": "Pages to stamp, 1-based and inclusive, e.g. '1-3,7,10-' (pages 1 to 3, page 7, and page 10 through the last). Empty means every page. Only stamped pages are counted: {page} runs start_number, start_number+1, ... over them and {total} is the last number shown.",
+          "type": "string"
+        },
+        "header_text": {
+          "default": "",
+          "description": "Text at the top of each stamped page, e.g. a document title. May use {page} and {total}. Chinese works. Empty: no header.",
+          "type": "string"
+        },
+        "header_align": {
+          "default": "center",
+          "description": "Header alignment.",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "type": "string"
+        },
+        "footer_text": {
+          "default": "",
+          "description": "Text at the bottom of each stamped page. May use {page} and {total}. Empty: no footer.",
+          "type": "string"
+        },
+        "footer_align": {
+          "default": "left",
+          "description": "Footer alignment. Must not be the page number's spot.",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "type": "string"
+        },
+        "font_size": {
+          "default": 10,
+          "description": "Text size in points (6-72).",
+          "type": "number"
+        },
+        "margin": {
+          "default": 28,
+          "description": "Distance from the page edge in points (72 points = 1 inch, 28 = 1 cm), 0-200.",
+          "type": "number"
+        },
+        "color": {
+          "default": "#000000",
+          "description": "Text colour: hex such as '#000000' or a name such as 'gray'.",
+          "type": "string"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "pdf_to_images",
+    "title": "Pdf To Images",
+    "description": "Render PDF pages as images, one image per page.\n\nOne page comes back as a single image file; several pages come back as\none ZIP containing one image per page, named <name>_p01.png,\n<name>_p02.png ... in the order requested. Use this when the user wants\na page as a picture (to share, embed in a slide, or post), a thumbnail,\nor a page for another image tool. To read a PDF's text, use\nextract_text instead.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image_format": {
+          "default": "png",
+          "description": "png (sharp text and lines, the default), jpg (smaller, for scans and photos) or webp",
+          "type": "string"
+        },
+        "dpi": {
+          "default": 150,
+          "description": "Resolution, 36-300. 150 (default) is right for reading on screen, 300 for printing or OCR, 72-100 for thumbnails. Very large pages are rendered at a lower DPI so one page stays under 25 megapixels",
+          "type": "integer"
+        },
+        "pages": {
+          "default": "",
+          "description": "Pages to render, 1-based and inclusive, e.g. '1', '1-3,7' or '10-'. Empty means every page. At most 50 pages per call",
+          "type": "string"
+        },
+        "quality": {
+          "default": 85,
+          "description": "JPEG / WebP quality, 1-95 (ignored for png)",
+          "type": "integer"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "images_to_pdf",
+    "title": "Images To Pdf",
+    "description": "Combine images into one PDF, one image per page.\n\nThe uploaded file is either one image (PNG, JPEG, WebP, TIFF, GIF, BMP;\nevery page of a multi-page TIFF becomes a page, GIF / WebP animations\ngive their first frame) or a ZIP of images. Only one file can be passed\nper call, so for several images ask the user to put them in a ZIP: the\npages follow the file names in natural order (page2 before page10), and\nfiles that are not images are skipped and listed. Photos are turned\nupright from their EXIF orientation, transparency becomes white, and\nJPEGs are embedded unchanged (no quality loss).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page_size": {
+          "default": "fit",
+          "description": "'fit' (default): each page is the size of its image. 'a4' or 'letter': every page that size, the image scaled to fit inside the margins and centred",
+          "type": "string"
+        },
+        "orientation": {
+          "default": "auto",
+          "description": "For a4 / letter: 'auto' (default) turns each page to match its image (landscape for wide images), or force 'portrait' / 'landscape'. Ignored for 'fit'",
+          "type": "string"
+        },
+        "margin_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "White margin around each image in millimetres, 0-50. Default: 0 for 'fit', 10 for a4 / letter"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  }
+]

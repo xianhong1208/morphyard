@@ -12,6 +12,8 @@ src/
 │   ├── service.py          base64 input → planned path → output
 │   ├── pdfops.py           PDF-only operations (split / extract / rotate / encrypt / images)
 │   ├── pdf_secure.py       pikepdf: compress / protect + permissions / unlock / metadata
+│   ├── pdf_pages.py        merge / delete / reorder / watermark / page numbers
+│   ├── pdf_images.py       PDF pages → images, images → PDF
 │   └── engines/
 │       ├── base.py           Engine interface, subprocess execution with timeout, temporary workspace
 │       ├── discovery.py      Cross-platform executable lookup (PATH plus known install locations)
@@ -21,17 +23,27 @@ src/
 │       ├── ocr.py            Image / scanned PDF → text (Tesseract)
 │       ├── image.py          Image ↔ image (Pillow)
 │       └── text.py           JSON / XML / TSV → Markdown
+├── domain/operations/      Operations registry: one entry per tool (arguments, arity, formats, the work)
+│   ├── base.py               Operation, Arity, Artifact, OpResult, execute(), get_operation(), list_operations()
+│   ├── convert_ops.py        list_supported_conversions / inspect_document / convert_document / extract_text
+│   ├── pdf_basic_ops.py      pdf_extract_pages / pdf_split / pdf_rotate
+│   ├── pdf_secure_ops.py     pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+│   ├── pdf_page_ops.py       pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
+│   └── pdf_image_ops.py      pdf_to_images / images_to_pdf
 ├── domain/files/
 │   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
 │   └── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
 ├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
-└── fastmcp_tools/
-    ├── morphyard_tools.py     MCP tool layer
-    └── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+└── fastmcp_tools/          MCP tool layer: thin wrappers over the operations
+    ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape
+    ├── morphyard_tools.py     register_morphyard_tools(); conversion and basic PDF tools
+    ├── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+    ├── pdf_page_tools.py      pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
+    └── pdf_image_tools.py     pdf_to_images / images_to_pdf
 ```
 
-Dependencies point strictly downward. The tool layer never touches base64 payloads or engines; it talks only to `service.py`. `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
+Dependencies point strictly downward. The tool layer never touches engines; it resolves the uploaded file(s) through `service.py` and runs an operation from the registry (see [Operations registry](#operations-registry)). `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
 
 ## Engines
 
@@ -95,7 +107,7 @@ The names are part of the public contract and must not change. Hosts that inject
 
 File-producing tools return `[summary text, File(...)]`, where `File` comes from `fastmcp.utilities.types`. On the wire the `File` is serialised as an MCP `EmbeddedResource`: the bytes are base64 in `block.resource.blob`, not in `block.data` (that field is used only by `ImageContent`).
 
-Tools that return a list must be declared with `@mcp.tool(output_schema=None)`. FastMCP otherwise derives an `outputSchema` from the `-> list` annotation and demands structured output, and clients receive `Output validation error: outputSchema defined but no structured output returned`. The tool functions themselves return normally; the error only appears when a real MCP client calls the server, which is why `scripts/mcp_smoke.py` exists.
+Tools that return a list must be declared with `@mcp.tool(output_schema=None)`. FastMCP otherwise derives an `outputSchema` from the `-> list` annotation and demands structured output, and clients receive `Output validation error: outputSchema defined but no structured output returned`. The tool functions themselves return normally; the error only appears when a real MCP client calls the server, which is why `scripts/mcp_smoke.py` exists. `add_operation_tool()` declares it for every tool whose reply is a list.
 
 ### Hosts that inject uploaded files (artifact injection)
 
@@ -153,6 +165,23 @@ Measured result: sixteen formats are recognised correctly with neither `file_nam
 | `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
 
 `convert_document` returns a file; `extract_text` returns text. The guidance that tells a model which to choose lives in `config/instructions.md`.
+
+## Operations registry
+
+Every tool is backed by one `Operation` in `src/domain/operations/`, and the registry is the single source of truth for what a tool takes and does:
+
+| Field | Meaning |
+|---|---|
+| `name` | The tool name (and, later, the pipeline step name) |
+| `args_model` | Pydantic model of the tool's own arguments: names, types, defaults, descriptions. The input file parameters are not in it |
+| `arity` | `many_to_one` (`pdf_merge`), `one_to_one` (most), `one_to_many` (`pdf_split`), `one_to_report` (`inspect_document`, `extract_text`, `pdf_metadata`), `none_to_report` (`list_supported_conversions`); `arity.produces_files` is false for the report kinds |
+| `input_formats` / `output_formats` | Accepted and produced formats (`None` = any detectable input / chosen by the arguments, as for `convert_document`) |
+| `prepare` | Checks of the arguments alone, run before any input is read (a bad option is answered at once, even when the server is busy) |
+| `run` | `OpCall` (resolved `Artifact`s, validated arguments, what `prepare` built, a `notify` callback) → `OpResult` (summary, `OutputFile`s, or a report) |
+
+`execute(op, args, sources, notify=None)` is the one path that runs an operation: start message → `prepare` → each input resolved and format-checked in turn (`sources` are callables, so where the bytes come from is the caller's business) → `run`. An input of the wrong format, or a request the operation declines with a plain answer, raises `OperationRefused`. Operations take the conversion slot themselves, around the engine work only. `get_operation(name)`, `list_operations()` and `Operation.describe()` let callers introspect it; `Operation.parse_args()` validates an argument dict (unknown arguments are refused).
+
+The MCP tools are built from it by `add_operation_tool()`: the tool's parameters are generated from `args_model`, with the input parameters (the `file_content` triple, or `pdf_merge`'s `files`) inserted where each tool has always had them; a call resolves the inputs, runs `execute()` and shapes the reply the way that tool always replied (`[summary, file, ...]`; plain text for the `pdf_secure` tools when there is no file; the report for report tools; a refusal as `[message]`, plain text or `{"error": message}`). `tests/test_tool_contract.py` compares the whole tool list, parameter order included, with `tests/fixtures/mcp_tools.json`.
 
 ## Conversion planning
 

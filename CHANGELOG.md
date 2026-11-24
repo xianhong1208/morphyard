@@ -12,6 +12,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - Morphyard now keeps state on disk (`MORPHYARD_DATA_DIR`). It is disposable: deleting it loses at most an hour of stored files and their links.
 
+### Internal
+- The tool bodies moved into an operations registry (`src/domain/operations/`: arguments, arity, formats and the work of each of the 19 tools), and the MCP tools became thin wrappers over it; no behaviour change, and the tool list is pinned by a snapshot test (#37).
+
 ## [1.3.0] — 2026-11-22
 
 ### Added

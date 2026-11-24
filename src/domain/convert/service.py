@@ -232,6 +232,27 @@ def resolve_artifact_input(
     return SourceFile(data=raw, fmt=fmt, name=stem_of(file_name))
 
 
+def read_raw_upload(file_content: str | None, file_name: str | None) -> bytes:
+    """Decode an upload without format detection, with the same size limit
+
+    For inputs that are not a document format resolve_artifact_input knows, such
+    as images_to_pdf's ZIP of images.
+    """
+    if not file_content or not file_content.strip():
+        raise UnsupportedFormatError(
+            "No file provided. Upload a file first; the host injects it into "
+            "file_content automatically."
+        )
+    raw, _ = _decode_file_content(file_content)
+    if len(raw) > MAX_INPUT_MB * 1024 * 1024:
+        raise UnsupportedFormatError(
+            f"File too large: {len(raw) / 1024 / 1024:.1f} MB, limit is {MAX_INPUT_MB} MB. "
+            "Split the images over several calls.",
+            file_name=file_name,
+        )
+    return raw
+
+
 async def run_plan(source: SourceFile, plan: list[Route], **opts) -> bytes:
     """Execute every hop of the path in order, in one conversion slot (limiter.py)
 
@@ -271,6 +292,17 @@ async def convert_artifact(
         layer can tell the model honestly which engines were involved and how
         much was lost.
     """
+    dst = check_target_format(target_format)
+    source = resolve_artifact_input(file_content, file_name, mime_type)
+    return await convert_source(source, dst, prefer_fidelity, output_name, **opts)
+
+
+def check_target_format(target_format: str) -> str:
+    """The normalized target format, or UnsupportedFormatError
+
+    Judged from the argument alone, before any file is read (see convert_artifact
+    for why the order matters).
+    """
     if not target_format or not target_format.strip():
         # After the host resolves an upload reference, it blanks the parameter
         # that held the reference. If the model mistakenly put the reference in
@@ -293,7 +325,17 @@ async def convert_artifact(
             "scope of this service."
         )
 
-    source = resolve_artifact_input(file_content, file_name, mime_type)
+    return dst
+
+
+async def convert_source(
+    source: SourceFile,
+    dst: str,
+    prefer_fidelity: bool = True,
+    output_name: str | None = None,
+    **opts,
+) -> tuple[ConversionOutput, list[Route]]:
+    """Plan and run the conversion of a resolved input to a checked target format"""
     src, dst = resolve_formats(source.fmt, dst)
 
     plan = plan_conversion(src, dst, prefer_fidelity=prefer_fidelity)
