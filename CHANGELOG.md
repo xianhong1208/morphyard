@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Stored files and signed download links (#33, first part of 1.4). Files can be kept on the server in `MORPHYARD_DATA_DIR` (default `./data`; the Docker image declares a volume at `/app/data`) for `MORPHYARD_FILE_TTL_SEC` (1 h by default, 24 h at most) and downloaded from `GET /files/<id>/<name>?exp=…&sig=…`, an HMAC-signed link that anyone holding it can use until it expires. A wrong, expired or tampered link and a removed file all get the same 404; downloads are attachments with `nosniff`, `no-store` and a sandbox CSP; signatures never reach the logs. Caps of 2 GB in total and 512 MB per person (`MORPHYARD_STORE_MAX_MB`, `MORPHYARD_STORE_OWNER_MAX_MB`) refuse new files with `storage_full` instead of deleting unexpired ones; expired files are swept every minute and at startup, and unexpired ones survive a restart. The signing key comes from `MORPHYARD_SIGNING_KEY` or is generated once into `<data_dir>/.signing_key` (mode 600); if it is lost or changes while files are stored, those files are deleted at startup with a warning, since their links can no longer be checked. `MORPHYARD_PUBLIC_URL` (default `MORPHYARD_BASE_URL`) sets the address links point at. `GET /health` gains a `store` block (counts and caps, no names). Tools do not return links yet: that comes with the next 1.4 change, which will use `MORPHYARD_RESULT_DELIVERY` (`auto` by default: a link, plus the file inline when it is at most `MORPHYARD_INLINE_MAX_MB`, 10 MB) — both defined now.
+
+### Changed
+- Morphyard now keeps state on disk (`MORPHYARD_DATA_DIR`). It is disposable: deleting it loses at most an hour of stored files and their links.
+
 ## [1.3.0] — 2026-11-22
 
 ### Added

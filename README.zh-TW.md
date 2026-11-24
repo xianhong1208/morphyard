@@ -59,6 +59,7 @@ FILE  file:///report.pdf  application/pdf  23963 bytes
 - **沒有檔名也能偵測格式。** 副檔名 → MIME → 容器內部檢查（ZIP 目錄 / OLE2 stream）→ 檔頭魔數。十六種格式在完全沒有檔名與 MIME type 的情況下仍能正確辨識。
 - **文件無法往外伸手。** 轉檔絕不讀取文件指向的本機檔案或網址，LibreOffice 也絕不執行巨集。
 - **標準化認證。** Bearer token 依 MCP Gate 的 JWKS 驗證（issuer、audience、可選的 scope）；伺服器發布 `/.well-known/oauth-protected-resource/mcp`，讓支援 OAuth 的 client 找到登入入口。開啟選用的 revocation feed 後，在 MCP Gate 撤銷的 token 會在一個輪詢間隔內（預設 30 秒）於此失效。
+- **暫存檔案與簽章下載連結。** 檔案可以在伺服器上保留一小時（可調整，最多一天），並從有期限的簽章連結下載；每人與整體都有上限，滿了就拒絕新檔案，而不是刪掉尚未過期的檔案。工具改為回傳連結是 1.4 的下一個變更；小檔案仍會同時以內嵌方式回傳。見 [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md#暫存檔案與下載連結)。
 - **到處都能跑。** 一個內建所有引擎的 Docker image，或直接 `uv run`。
 
 支援：pdf、docx、doc、odt、rtf、epub；xlsx、xls、ods、csv、tsv；pptx、ppt、odp；md、html、txt、rst、tex、json、xml；png、jpg、webp、gif、bmp、tiff。完整的工具與格式表在 [docs/tools.zh-TW.md](docs/tools.zh-TW.md)。
@@ -133,9 +134,11 @@ uv run python scripts/mcp_smoke.py
 
   ```bash
   docker build -t morphyard .
-  docker run -p 5055:5055 -e MCP_GATE_URL=http://mcp-gate:4568 \
+  docker run -p 5055:5055 -v morphyard-data:/app/data -e MCP_GATE_URL=http://mcp-gate:4568 \
     -e MORPHYARD_BASE_URL=http://127.0.0.1:5055 morphyard
   ```
+
+  `/app/data` volume 讓暫存檔案與下載連結的簽章金鑰在重建容器後仍然保留。
 
 - **直接在主機上**以 `uv run python main.py` 執行，如快速開始所示。
 

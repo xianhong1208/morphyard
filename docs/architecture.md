@@ -21,6 +21,10 @@ src/
 │       ├── ocr.py            Image / scanned PDF → text (Tesseract)
 │       ├── image.py          Image ↔ image (Pillow)
 │       └── text.py           JSON / XML / TSV → Markdown
+├── domain/files/
+│   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
+│   └── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
+├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/
     ├── morphyard_tools.py     MCP tool layer

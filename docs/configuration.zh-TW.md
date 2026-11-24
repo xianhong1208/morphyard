@@ -15,6 +15,12 @@
 | `MORPHYARD_MAX_CONCURRENT_CONVERSIONS` | CPU 數，最多 8 | 同時執行的轉換數，所有引擎合計。見[同時轉換](#同時轉換)。 |
 | `MORPHYARD_MAX_QUEUED_CONVERSIONS` | 上限的 4 倍 | 最多還能有幾個請求排隊等空位；`0` 表示所有空位都被占用時立即拒絕。 |
 | `MORPHYARD_QUEUE_TIMEOUT` | `30` | 請求等待空位的秒數上限，超過即以「忙碌」拒絕。 |
+| `MORPHYARD_DATA_DIR` | `./data` | 暫存檔案與自動產生的連結簽章金鑰。見[暫存檔案與下載連結](#暫存檔案與下載連結)。 |
+| `MORPHYARD_PUBLIC_URL` | `MORPHYARD_BASE_URL` | 下載連結指向的位址。 |
+| `MORPHYARD_SIGNING_KEY` | 自動產生 | 簽署下載連結的金鑰。 |
+| `MORPHYARD_FILE_TTL_SEC` | `3600` | 檔案保留的秒數（最多 86400）。 |
+| `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | 暫存上限：整體、每人。 |
+| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | 工具回傳檔案的方式（自 1.4 的下一個變更起生效）。 |
 | `LOG_LEVEL` | `INFO` | |
 
 YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 scope（例如 `mcp:tools:invoke`）；`auth.audience` 則可在註冊的 resource URI 不是 `<base_url>/mcp` 的少數情況下覆寫推導值。
@@ -26,6 +32,30 @@ YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 s
 請求遇到空位全滿時，會進入先進先出的佇列等待。若已有 `MORPHYARD_MAX_QUEUED_CONVERSIONS` 個請求在等，或等待超過 `MORPHYARD_QUEUE_TIMEOUT` 秒，就會被拒絕。拒絕是一個 MCP 工具錯誤，說明伺服器忙碌、尚未開始任何轉換，並請在幾秒後以相同參數重試（若經由 HTTP 則是 `503` 加上 `Retry-After` header）。`GET /health` 的 `conversions` 顯示目前狀態：`running`、`queued` 與三個上限。
 
 預設上限是此程序可用的 CPU 數，最多 8，因為 LibreOffice 與 Tesseract 每個都要數百 MB，記憶體通常比 CPU 先用完。記憶體充足的大機器可以調高，小機器則調低。每個排隊中的請求都把上傳的檔案留在記憶體中（最多 `MAX_INPUT_MB`），佇列長度限制的就是這部分。上限以伺服器程序為單位：有多個 worker 或副本時，各自有自己的上限。
+
+## 暫存檔案與下載連結
+
+Morphyard 會把檔案在伺服器上保留一小段時間，並發出有簽章的下載連結，讓大型結果不必以 base64 塞進模型的上下文。這個版本先放入暫存區與連結；工具改為回傳連結是 1.4 的下一個變更。
+
+連結的樣子是 `<MORPHYARD_PUBLIC_URL>/files/<檔案 id>/<檔名>?exp=<unix 時間>&sig=<簽章>`。**任何拿到連結的人，在到期前都能下載**，和 S3 預簽網址一樣：只有擁有者的工具呼叫會拿到連結，擁有者檢查就發生在那裡。連結在 `exp` 到期或檔案被刪除時失效，以先到者為準。錯誤、過期或被竄改的連結，以及已不存在的檔案，都回同樣的 `404`，因此連結不會透露檔案是否曾經存在。下載一律以附件提供，並帶 `X-Content-Type-Options: nosniff`、`Cache-Control: private, no-store`、`Referrer-Policy: no-referrer` 與 `Content-Security-Policy: sandbox`，HTML 結果不會在本伺服器上當成網頁執行。查詢字串（簽章）不會寫進日誌。
+
+| 變數／設定 | 預設值 | 說明 |
+|---|---|---|
+| `MORPHYARD_DATA_DIR`（`files.data_dir`） | `./data` | 暫存區在 `<data_dir>/store`，自動產生的金鑰在 `<data_dir>/.signing_key`。Docker 映像在 `/app/data` 宣告了 volume。 |
+| `MORPHYARD_PUBLIC_URL`（`files.public_url`） | `MORPHYARD_BASE_URL` | 使用者的瀏覽器與 agent 連到本伺服器的位址。MCP 位址是內部位址時（reverse proxy 後面或區網名稱）請設定。若它是 loopback 位址而伺服器監聽所有介面，啟動時會警告。 |
+| `MORPHYARD_SIGNING_KEY`（`files.signing_key`） | 自動產生 | 至少 32 個字元（`openssl rand -hex 32`）。未設定時，第一次啟動會產生 32 個隨機位元組存到 `<data_dir>/.signing_key`（權限 600）。YAML 中必須維持 `${ENV_VAR}` 參照；寫死的值會拒絕啟動。金鑰檔讀不出來或太短也會拒絕啟動，絕不會悄悄換掉。 |
+| `MORPHYARD_FILE_TTL_SEC`（`files.ttl_sec`） | `3600` | 檔案保留多久，最多 86400（24 小時）。工具可以要求更短，不能更長。 |
+| `MORPHYARD_STORE_MAX_MB`（`files.max_total_mb`） | `2048` | 整個暫存區。 |
+| `MORPHYARD_STORE_OWNER_MAX_MB`（`files.max_per_owner_mb`） | `512` | 每人（token 的 `sub`；關閉驗證時所有人算同一人）。 |
+| `files.sweep_interval_sec` | `60` | 每隔這麼久、以及啟動時，刪除過期檔案。 |
+| `MORPHYARD_RESULT_DELIVERY`（`files.result_delivery`） | `auto` | 工具回傳檔案的方式，自 1.4 的下一個變更起生效：`auto` = 連結，檔案不超過 `MORPHYARD_INLINE_MAX_MB` 時另附 base64（會把內嵌檔案轉成 artifact 的 host 照常運作）；`inline` = 只有 base64，與 1.3 相同；`both` = 一律兩者都給；`link` = 只有連結。 |
+| `MORPHYARD_INLINE_MAX_MB`（`files.inline_max_mb`） | `10` | `auto` 的門檻。 |
+
+**暫存區滿了**時，新檔案會被拒絕，錯誤為 `storage_full` 並說明何時可重試；會先清掉過期檔案，但絕不刪除尚未過期的檔案來騰出空間，因此已發出的連結在標示的到期時間前都有效。每個檔案放在 `<store>/<擁有者的 sha256>/<檔案 id>/`（磁碟上沒有原始身分），先寫到暫存名稱再改名，當機也不會留下半個檔案。
+
+**重新啟動**會保留未過期的檔案與它們的連結。請把金鑰（`.signing_key` 或 `MORPHYARD_SIGNING_KEY`）和暫存區一起保留：若有檔案時金鑰遺失或變更，這些連結已無法驗證，啟動時會刪除這些檔案並記錄警告。只遺失暫存區、金鑰還在，則只會少了檔案。已存檔案的索引放在記憶體中，所以一個暫存區屬於一個伺服器程序。
+
+`GET /health` 的 `store` 顯示暫存區：`files`、`bytes`、`owners` 與上限——不含檔名或 id。
 
 ## Token 撤銷
 
