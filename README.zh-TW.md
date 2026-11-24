@@ -131,7 +131,7 @@ curl -i -X POST http://localhost:5055/mcp                                  # 401
 若要在沒有 MCP Gate 的情況下本機實驗，關閉認證啟動並執行協定 smoke test：
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 

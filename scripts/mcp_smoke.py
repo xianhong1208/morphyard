@@ -1,7 +1,7 @@
 """MCP protocol-level smoke test: receive file -> convert -> return file.
 
     # Start the server in another terminal, without authentication
-    AUTH_ENABLED=false SERVER_PORT=5056 uv run python main.py
+    AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 uv run python main.py
     # then
     uv run python scripts/mcp_smoke.py
     # (another server: MORPHYARD_SMOKE_URL=http://127.0.0.1:<port>/mcp)
@@ -257,6 +257,10 @@ async def main():
             print("\n=== Scenario 10 skipped: the server returns no links (delivery inline) ===")
         else:
             print("\n=== Scenario 10: download the link, chain by file_id -> pdf_rotate ===")
+            link_origin = str(links[0].uri).split("/files/", 1)[0]
+            assert URL.startswith(link_origin + "/"), (
+                f"the link points at {link_origin}, not at the server under test ({URL}): "
+                "start it with MORPHYARD_BASE_URL (or MORPHYARD_PUBLIC_URL) set to its own address")
             with urllib.request.urlopen(str(links[0].uri)) as response:
                 downloaded = response.read()
             assert downloaded == got[0][1], "the link does not download the inline bytes"

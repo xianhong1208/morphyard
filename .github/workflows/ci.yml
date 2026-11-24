@@ -56,6 +56,7 @@ jobs:
         run: |
           docker run -d --name morphyard -p 5056:5056 \
             -e AUTH_ENABLED=false -e SERVER_PORT=5056 -e MORPHYARD_REVOCATION_ENABLED=false \
+            -e MORPHYARD_BASE_URL=http://127.0.0.1:5056 \
             morphyard:ci
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:5056/health > /dev/null && break; sleep 2; done
           curl -sf http://127.0.0.1:5056/health

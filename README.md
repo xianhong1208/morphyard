@@ -131,7 +131,7 @@ curl -i -X POST http://localhost:5055/mcp                                  # 401
 For a local experiment without MCP Gate, start it with authentication off and run the protocol smoke test:
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 

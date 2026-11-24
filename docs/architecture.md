@@ -247,7 +247,7 @@ uv run pytest                              # logic, < 1 s
 uv run python scripts/sweep_routes.py      # engines, ~70 s
 
 # Protocol check: start the server in another terminal first, with authentication off
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 
