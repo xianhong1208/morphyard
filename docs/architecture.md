@@ -30,6 +30,10 @@ src/
 │   ├── pdf_secure_ops.py     pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
 │   ├── pdf_page_ops.py       pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
 │   └── pdf_image_ops.py      pdf_to_images / images_to_pdf
+├── domain/files/
+│   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
+│   └── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
+├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/          MCP tool layer: thin wrappers over the operations
     ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape

@@ -59,6 +59,7 @@ And `extract_text` on the same file returns Markdown for the model to read:
 - **Format detection without a file name.** Extension → MIME → container inspection (ZIP directory / OLE2 streams) → magic bytes. Sixteen formats are recognised with no name and no MIME type at all.
 - **Documents cannot reach out.** Conversions never read local files or fetch URLs a document points at, and LibreOffice never runs macros.
 - **Standards-based auth.** Bearer tokens are verified against MCP Gate's JWKS (issuer, audience, optional scopes); the server publishes `/.well-known/oauth-protected-resource/mcp` so OAuth-aware clients discover where to sign in. With the optional revocation feed, a token revoked in MCP Gate stops working here within one poll interval (30 s by default).
+- **Stored files and signed download links.** Files can be kept on the server for an hour (settable, at most a day) and fetched from an expiring signed link, with caps per person and in total that refuse new files rather than delete unexpired ones. Tools switch to returning links in the next 1.4 change; small results keep coming back inline too. See [docs/configuration.md](docs/configuration.md#stored-files-and-download-links).
 - **Runs anywhere.** One Docker image with all engines baked in, or a plain `uv run`.
 
 Supported: pdf, docx, doc, odt, rtf, epub; xlsx, xls, ods, csv, tsv; pptx, ppt, odp; md, html, txt, rst, tex, json, xml; png, jpg, webp, gif, bmp, tiff. The full tool and format tables are in [docs/tools.md](docs/tools.md).
@@ -133,9 +134,11 @@ uv run python scripts/mcp_smoke.py
 
   ```bash
   docker build -t morphyard .
-  docker run -p 5055:5055 -e MCP_GATE_URL=http://mcp-gate:4568 \
+  docker run -p 5055:5055 -v morphyard-data:/app/data -e MCP_GATE_URL=http://mcp-gate:4568 \
     -e MORPHYARD_BASE_URL=http://127.0.0.1:5055 morphyard
   ```
+
+  The `/app/data` volume keeps stored files and the download-link signing key across container re-creates.
 
 - **Directly on the host** with `uv run python main.py`, as in the quick start.
 
