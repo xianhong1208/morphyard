@@ -37,6 +37,8 @@ def test_tool_list_matches_the_snapshot():
     assert [t["name"] for t in current] == [t["name"] for t in expected]
     for got, want in zip(current, expected):
         assert got == want, f"tool {want['name']} differs from tests/fixtures/mcp_tools.json"
+        # Dict equality ignores key order; the order of parameters is part of the contract
+        assert json.dumps(got) == json.dumps(want), f"tool {want['name']}: parameter order"
     assert len(current) == 19
 
 
