@@ -29,14 +29,16 @@ src/
 │   ├── pdf_basic_ops.py      pdf_extract_pages / pdf_split / pdf_rotate
 │   ├── pdf_secure_ops.py     pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
 │   ├── pdf_page_ops.py       pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
-│   └── pdf_image_ops.py      pdf_to_images / images_to_pdf
+│   ├── pdf_image_ops.py      pdf_to_images / images_to_pdf
+│   └── sources.py            Lazy input sources: file_content (base64 / text) or a stored file_id (owner-checked)
 ├── domain/files/
 │   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
-│   └── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
+│   ├── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
+│   └── results.py          keep_results(): store a result's files all-or-nothing and sign their links
 ├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/          MCP tool layer: thin wrappers over the operations
-    ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape
+    ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape and delivery
     ├── morphyard_tools.py     register_morphyard_tools(); conversion and basic PDF tools
     ├── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
     ├── pdf_page_tools.py      pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
@@ -103,9 +105,22 @@ mime_type:    Optional[str]
 
 The names are part of the public contract and must not change. Hosts that inject uploaded files match on these exact names.
 
+Every tool that takes a file also accepts `file_id: Optional[str]` after these three: a file in the store (a result an earlier call returned), read through the same lazy input sources (`src/domain/operations/sources.py`) and held to the same size limit and format detection. One of `file_content` / `file_id` must be given, not both; an empty string counts as absent, because a host that injects an upload blanks the parameter the model put the reference in. A `file_id` is owner-checked against the caller (the token's `sub`; `anonymous` without auth), and an unknown, expired or foreign id all raise the same `file_not_found` error. `pdf_merge` items take `file_id` the same way.
+
 ### Output
 
 File-producing tools return `[summary text, File(...)]`, where `File` comes from `fastmcp.utilities.types`. On the wire the `File` is serialised as an MCP `EmbeddedResource`: the bytes are base64 in `block.resource.blob`, not in `block.data` (that field is used only by `ImageContent`).
+
+Since 1.4 the result files also go into the store (`keep_results`, all or nothing) and the reply is shaped by `files.result_delivery` (`operation_tool.deliver_files`):
+
+| Mode | Reply |
+|---|---|
+| `inline` | `[summary, File, …]` — exactly 1.3; nothing stored |
+| `auto` (default) | `[summary + links, File (only those ≤ inline_max_mb), …, ResourceLink, …]` |
+| `both` | `[summary + links, File, …, ResourceLink, …]` |
+| `link` | `[summary + links, ResourceLink, …]` |
+
+The `File` blocks are the 1.3 blocks byte for byte and come first, so a host that turns an inline file into an artifact sees what it always saw; the `ResourceLink`s follow. "links" is a text block appended to the summary: per file the name, size, `file_id` and signed URL (marked "link only" when the file is not inline), the expiry, and a hint to pass the `file_id` on — the URL has to be in the text because Claude Code ignores `resource_link`. A full store raises a tool error naming the limit and the retry time. Without a store runtime (tests that register tools alone) the reply is the `inline` one. Report tools and answers without a file are unchanged, and the tools' `outputSchema`s are unchanged (file tools still declare none).
 
 Tools that return a list must be declared with `@mcp.tool(output_schema=None)`. FastMCP otherwise derives an `outputSchema` from the `-> list` annotation and demands structured output, and clients receive `Output validation error: outputSchema defined but no structured output returned`. The tool functions themselves return normally; the error only appears when a real MCP client calls the server, which is why `scripts/mcp_smoke.py` exists. `add_operation_tool()` declares it for every tool whose reply is a list.
 

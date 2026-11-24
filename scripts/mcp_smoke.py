@@ -4,6 +4,7 @@
     AUTH_ENABLED=false SERVER_PORT=5056 uv run python main.py
     # then
     uv run python scripts/mcp_smoke.py
+    # (another server: MORPHYARD_SMOKE_URL=http://127.0.0.1:<port>/mcp)
 
 Simulates a host that injects uploaded files, end to end:
   1. Connect to /mcp and list the tools (exactly what the AI sees)
@@ -33,13 +34,15 @@ exercised along the way.
 """
 import asyncio
 import base64
+import os
 import subprocess
+import urllib.request
 import tempfile
 from pathlib import Path
 
 from fastmcp import Client
 
-URL = "http://127.0.0.1:5056/mcp"
+URL = os.environ.get("MORPHYARD_SMOKE_URL", "http://127.0.0.1:5056/mcp")
 WORK = Path(tempfile.mkdtemp(prefix="mcp_e2e_"))
 
 
@@ -88,6 +91,8 @@ def describe(block) -> str:
     kind = type(block).__name__
     if getattr(block, "text", None):
         return f"[{kind}] {block.text[:200]}"
+    if kind == "ResourceLink":
+        return f"[{kind}] {block.name} mime={block.mime_type} {block.size}B {str(block.uri)[:60]}..."
     got = unwrap_file(block)
     if got:
         name, mime, raw = got
@@ -242,6 +247,26 @@ async def main():
             print("  " + describe(b))
         got = save_files(r, "imaged")
         assert got and got[0][1].startswith(b"%PDF-"), "returned file is not a PDF"
+
+        # -- Scenario 10: links and file_id (the server's default delivery, `auto`) --
+        # A small result comes back inline AND as a link with a file_id; the link
+        # downloads the same bytes, and the next tool takes the file_id instead of the
+        # bytes. Skipped when the server runs with MORPHYARD_RESULT_DELIVERY=inline.
+        links = [b for b in r.content if type(b).__name__ == "ResourceLink"]
+        if not links:
+            print("\n=== Scenario 10 skipped: the server returns no links (delivery inline) ===")
+        else:
+            print("\n=== Scenario 10: download the link, chain by file_id -> pdf_rotate ===")
+            with urllib.request.urlopen(str(links[0].uri)) as response:
+                downloaded = response.read()
+            assert downloaded == got[0][1], "the link does not download the inline bytes"
+            file_id = links[0].description.rsplit("file_id ", 1)[1]
+            assert file_id in r.content[0].text, "the text does not name the file_id"
+            r = await client.call_tool("pdf_rotate", {"degrees": 90, "file_id": file_id})
+            for b in r.content:
+                print("  " + describe(b))
+            assert save_files(r, "rotated")[0][1].startswith(b"%PDF-")
+            print(f"  -> link downloaded {len(downloaded)}B identical; {file_id} chained")
 
     print(f"\nAll scenarios passed. Output files are in {WORK}")
 

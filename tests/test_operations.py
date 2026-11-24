@@ -25,7 +25,7 @@ from src.domain.operations import base as ops_base
 from src.fastmcp_tools.morphyard_tools import register_morphyard_tools
 
 # Tool name -> the parameters that carry the input file(s), not the operation's arguments
-INPUT_PARAMS = {"file_content", "file_name", "mime_type", "files"}
+INPUT_PARAMS = {"file_content", "file_name", "mime_type", "file_id", "files"}
 
 EXPECTED_ARITY = {
     "list_supported_conversions": Arity.NONE_TO_REPORT,

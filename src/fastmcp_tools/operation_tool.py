@@ -19,30 +19,52 @@ This error is invisible in unit tests: the tool function returns fine, and it
 is FastMCP that rejects it while serializing the response. It only shows up
 when a real MCP client makes the call. `add_operation_tool` sets it for every
 reply style except REPORT.
+
+**Result files are kept on the server and returned as links** (issue #33), as
+`files.result_delivery` says (MORPHYARD_RESULT_DELIVERY):
+
+    inline  [summary, file, ...]                       exactly as in 1.3, nothing stored
+    auto    [summary + links, file (small ones only), ..., resource_link, ...]
+    both    [summary + links, file, ..., resource_link, ...]
+    link    [summary + links, resource_link, ...]
+
+The embedded files are the same blocks 1.3 sent, byte for byte (hosts that turn
+an inline file into an artifact keep working); the links come after them. The
+URLs are also in the text because some clients ignore `resource_link`. Without a
+file store (tests that build tools alone) the reply is the `inline` one.
 """
 
+import asyncio
 import inspect
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_access_token
 from fastmcp.utilities.types import File
+from mcp_types import ResourceLink
 from pydantic import Field
 
-from src.domain.convert.service import read_raw_upload, resolve_artifact_input
-from src.domain.convert.types import mime_type_for, stem_of
+from src.domain.convert.types import mime_type_for
+from src.domain.files import KeptFile, NewFile, StoreFullError, get_runtime, keep_results
 from src.domain.operations import (
-    Artifact,
     InputSource,
     OperationRefused,
     OpResult,
     execute,
     get_operation,
 )
+from src.domain.operations.sources import ANONYMOUS_OWNER, input_source
 
 _MIME = {"zip": "application/zip"}
+
+
+def output_mime(fmt: str) -> str:
+    return _MIME.get(fmt) or mime_type_for(fmt)
 
 
 class TypedFile(File):
@@ -57,7 +79,7 @@ class TypedFile(File):
 
     def __init__(self, data: bytes, fmt: str, name: str):
         super().__init__(data=data, format=fmt, name=name)
-        self._output_mime_type = _MIME.get(fmt) or mime_type_for(fmt)
+        self._output_mime_type = output_mime(fmt)
 
     def to_resource_content(self, mime_type=None, annotations=None):
         return super().to_resource_content(
@@ -114,8 +136,27 @@ FILE_NAME = Annotated[str | None, Field(
                 "reference here.")]
 MIME_TYPE = Annotated[str | None, Field(
     description="MIME type (optional, usually empty)")]
+FILE_ID = Annotated[str | None, Field(
+    description="Instead of file_content: the file_id of a file an earlier Morphyard "
+                "tool returned (e.g. 'f_...'), to work on that result without passing "
+                "it back. Give either file_content or file_id, not both. Never put an "
+                "upload reference here; that goes in file_content.")]
 
 _KW = inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+
+def current_owner() -> str:
+    """Who the call's files belong to: the token's `sub`, or "anonymous" without auth.
+
+    A token without a `sub` (MCP Gate always sets one) falls back to its client id.
+    """
+    token = get_access_token()
+    if token is None:
+        return ANONYMOUS_OWNER
+    sub = (token.claims or {}).get("sub")
+    if isinstance(sub, str) and sub:
+        return sub
+    return f"client:{token.client_id}"
 
 
 @dataclass(frozen=True)
@@ -124,34 +165,115 @@ class Inputs:
 
     params: list[inspect.Parameter]
     # Pops the input parameters from the call's kwargs; returns the sources.
-    sources: Callable[[dict[str, Any], bool], list[InputSource]]
+    # Arguments: the kwargs, whether to detect the format, the caller (owner).
+    sources: Callable[[dict[str, Any], bool, str], list[InputSource]]
 
 
-def _upload_sources(kwargs: dict[str, Any], detect: bool) -> list[InputSource]:
-    file_content = kwargs.pop("file_content", None)
-    file_name = kwargs.pop("file_name", None)
-    mime_type = kwargs.pop("mime_type", None)
-
-    def resolve() -> Artifact:
-        if not detect:
-            raw = read_raw_upload(file_content, file_name)
-            return Artifact(data=raw, fmt=None, name=stem_of(file_name), file_name=file_name)
-        source = resolve_artifact_input(file_content, file_name, mime_type)
-        return Artifact(data=source.data, fmt=source.fmt, name=source.name,
-                        file_name=file_name)
-    return [resolve]
+def _upload_sources(kwargs: dict[str, Any], detect: bool, owner: str) -> list[InputSource]:
+    return [input_source(
+        owner=owner, detect=detect,
+        file_content=kwargs.pop("file_content", None),
+        file_name=kwargs.pop("file_name", None),
+        mime_type=kwargs.pop("mime_type", None),
+        file_id=kwargs.pop("file_id", None),
+    )]
 
 
 def upload(file_content=FILE_CONTENT) -> Inputs:
-    """One uploaded file, as the file_content / file_name / mime_type triple."""
+    """One input file: the file_content / file_name / mime_type triple, or a file_id."""
     return Inputs(
         params=[
             inspect.Parameter("file_content", _KW, default=None, annotation=file_content),
             inspect.Parameter("file_name", _KW, default=None, annotation=FILE_NAME),
             inspect.Parameter("mime_type", _KW, default=None, annotation=MIME_TYPE),
+            inspect.Parameter("file_id", _KW, default=None, annotation=FILE_ID),
         ],
         sources=_upload_sources,
     )
+
+
+# ------------------------------------------------------------------------
+# Result files: stored, linked, and (depending on the delivery mode) inline
+# ------------------------------------------------------------------------
+
+def _size_text(size: int) -> str:
+    if size < 1024:
+        return f"{size} bytes"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def _mb_text(size: int) -> str:
+    return f"{size / (1024 * 1024):g} MB"
+
+
+def links_text(kept: list[KeptFile], attached: list[bool], mode: str,
+               inline_max_bytes: int, now: float | None = None) -> str:
+    """The part of the reply text that gives the links (appended to the summary)."""
+    now = time.time() if now is None else now
+    expires = min(k.meta.expires_at for k in kept)
+    until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(expires))
+    minutes = max(1, round((expires - now) / 60))
+    plural = "s" if len(kept) > 1 else ""
+    lines = [f"Download link{plural} (valid until {until}, about {minutes} min):"]
+    for k, inline in zip(kept, attached):
+        only = "" if inline else ", link only"
+        lines.append(f"- {k.meta.name} ({_size_text(k.meta.size)}, file_id {k.meta.file_id}"
+                     f"{only}): {k.url}")
+    if not all(attached):
+        if mode == "auto":
+            lines.append(
+                f"Files marked \"link only\" are larger than {_mb_text(inline_max_bytes)} and are "
+                "not attached to this reply: they are available only at their URL, so give "
+                "the user the link.")
+        else:
+            lines.append(
+                f"The file{plural} {'are' if plural else 'is'} not attached to this reply: "
+                f"{'they are' if plural else 'it is'} available only at the URL, so give the "
+                "user the link.")
+    lines.append("To use a result in another Morphyard tool, pass its file_id instead of "
+                 "file_content.")
+    return "\n".join(lines)
+
+
+def resource_link(k: KeptFile) -> ResourceLink:
+    until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(k.meta.expires_at))
+    return ResourceLink(
+        type="resource_link", uri=k.url, name=k.meta.name, mimeType=k.meta.mime,
+        size=k.meta.size,
+        description=f"Download link, valid until {until}; file_id {k.meta.file_id}",
+    )
+
+
+async def deliver_files(result: OpResult, owner: str) -> list:
+    """[summary, file, ...] shaped by the delivery mode (see the module docstring)."""
+    typed = [TypedFile(f.data, f.fmt, f.name) for f in result.files]
+    runtime = get_runtime()
+    mode = runtime.result_delivery if runtime is not None else "inline"
+    if mode == "inline":
+        return [result.summary, *typed]
+    new = [NewFile(data=f.data, name=f"{f.name}.{f.fmt}", mime=output_mime(f.fmt))
+           for f in result.files]
+    try:
+        kept = await asyncio.to_thread(keep_results, runtime.store, runtime.signer, owner, new)
+    except StoreFullError as full:
+        if full.details.get("never_fits"):
+            advice = ("Nothing was stored. Tell the user; retrying will not succeed (the "
+                      "operator can raise MORPHYARD_STORE_OWNER_MAX_MB / MORPHYARD_STORE_MAX_MB, "
+                      "or a smaller result may fit).")
+        else:
+            advice = (f"Retry after about {full.details.get('retry_after_sec')} s. Nothing was "
+                      "stored. Tell the user; retrying at once will not succeed.")
+        raise ToolError(f"The result could not be kept on the server: {full.message} {advice}") from None
+    if mode == "both":
+        attached = [True] * len(kept)
+    elif mode == "auto":
+        attached = [len(f.data) <= runtime.inline_max_bytes for f in result.files]
+    else:
+        attached = [False] * len(kept)
+    text = f"{result.summary}\n\n{links_text(kept, attached, mode, runtime.inline_max_bytes)}"
+    return [text, *(t for t, a in zip(typed, attached) if a), *(resource_link(k) for k in kept)]
 
 
 class Reply(Enum):
@@ -170,13 +292,12 @@ class Reply(Enum):
     FILES_OR_TEXT = "files_or_text"
     REPORT = "report"
 
-    def success(self, result: OpResult):
+    async def success(self, result: OpResult, owner: str = ANONYMOUS_OWNER):
         if self is Reply.REPORT:
             return result.report
-        files = [TypedFile(f.data, f.fmt, f.name) for f in result.files]
-        if self is Reply.FILES_OR_TEXT and not files:
-            return result.summary
-        return [result.summary, *files]
+        if not result.files:
+            return result.summary if self is Reply.FILES_OR_TEXT else [result.summary]
+        return await deliver_files(result, owner)
 
     def refusal(self, message: str):
         if self is Reply.REPORT:
@@ -226,13 +347,14 @@ def add_operation_tool(
 
     async def tool(**kwargs):
         ctx = kwargs.pop("ctx", None)
-        sources = inputs.sources(kwargs, op.detect_input_format) if inputs else []
+        owner = current_owner()
+        sources = inputs.sources(kwargs, op.detect_input_format, owner) if inputs else []
         try:
             result = await execute(op, kwargs, sources,
                                    notify=ctx.info if ctx is not None else None)
         except OperationRefused as refused:
             return reply.refusal(refused.message)
-        return reply.success(result)
+        return await reply.success(result, owner)
 
     tool.__name__ = tool.__qualname__ = name
     tool.__doc__ = description

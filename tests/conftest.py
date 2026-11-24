@@ -48,3 +48,15 @@ def caplog_loguru():
     handler_id = logger.add(lambda m: messages.append(m.record["message"]), level="DEBUG")
     yield messages
     logger.remove(handler_id)
+
+
+@pytest.fixture(autouse=True)
+def _no_file_store_left_over():
+    """Each test starts without a file store runtime (tools then reply as in 1.3, `inline`);
+    a test that builds an app or sets a runtime does not leak it into the next test."""
+    from src.domain import files
+
+    saved = files.get_runtime()
+    files.set_runtime(None)
+    yield
+    files.set_runtime(saved)

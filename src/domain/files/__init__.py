@@ -20,6 +20,7 @@ from src.domain.files.links import (
     load_signing_key,
     reconcile_store_with_key,
 )
+from src.domain.files.results import KeptFile, NewFile, keep_results
 from src.domain.files.store import (
     DEFAULT_TTL_SEC,
     MAX_TTL_SEC,
@@ -167,8 +168,8 @@ async def files_lifespan():
 
 
 __all__ = [
-    "DEFAULT_TTL_SEC", "MAX_TTL_SEC", "FilesRuntime", "LinkSigner", "LocalStore", "ResultStore",
+    "DEFAULT_TTL_SEC", "MAX_TTL_SEC", "FilesRuntime", "KeptFile", "LinkSigner", "LocalStore", "ResultStore",
     "SigningKeyError", "StoreFullError", "StoredFile", "SweepResult", "files_lifespan",
-    "files_status", "get_runtime", "get_signer", "get_store", "init_files", "owner_key",
+    "files_status", "get_runtime", "get_signer", "get_store", "init_files", "keep_results", "NewFile", "owner_key",
     "resolve_public_url", "safe_mime", "safe_name", "set_runtime", "valid_file_id",
 ]

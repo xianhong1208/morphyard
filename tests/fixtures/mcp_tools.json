@@ -74,6 +74,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -139,6 +151,18 @@
           "default": null,
           "description": "MIME type (optional, usually empty)"
         },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+        },
         "allow_quality_loss": {
           "default": true,
           "description": "Allow layout quality to be sacrificed so the conversion can succeed; allowed by default. The response carries an explicit quality warning that you must relay to the user. Set to False only when the user explicitly says the layout must not be lost, even at the cost of not converting",
@@ -199,6 +223,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         },
         "max_chars": {
           "default": 50000,
@@ -272,6 +308,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       },
       "required": [
@@ -332,6 +380,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -393,6 +453,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       },
       "required": [
@@ -463,6 +535,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -550,6 +634,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -606,6 +702,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       },
       "required": [
@@ -666,6 +774,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -737,6 +857,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -749,19 +881,27 @@
   {
     "name": "pdf_merge",
     "title": "Pdf Merge",
-    "description": "Merge several PDFs into one PDF, in the given order.\n\nPass every PDF yourself as base64 in `files` (this tool does not use the\nsingle file_content upload slot of the other tools). If you only hold an\nupload reference and cannot pass the bytes, tell the user merging needs the\nfiles themselves. Encrypted PDFs are refused: remove their password first.",
+    "description": "Merge several PDFs into one PDF, in the given order.\n\nPass every PDF yourself as base64 in `files`, or the file_id of a PDF an\nearlier Morphyard tool returned (this tool does not use the single\nfile_content upload slot of the other tools). If you only hold an upload\nreference and cannot pass the bytes, tell the user merging needs the files\nthemselves. Encrypted PDFs are refused: remove their password first.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "files": {
-          "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item carries one PDF as base64 in file_content plus its file_name. 2 to 20 files, at most 50 MB together.",
+          "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item carries one PDF as base64 in file_content plus its file_name, or the file_id of a PDF an earlier Morphyard tool returned. 2 to 20 files, at most 50 MB together.",
           "items": {
-            "description": "One PDF to merge",
+            "description": "One PDF to merge: the file itself or the file_id of an earlier result",
             "properties": {
               "file_content": {
-                "description": "The PDF itself, base64-encoded.",
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "The PDF itself, base64-encoded. Leave empty when file_id is given."
               },
               "file_name": {
                 "anyOf": [
@@ -773,12 +913,21 @@
                   }
                 ],
                 "default": null,
-                "description": "Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for this file in the merged PDF."
+                "description": "Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for this file in the merged PDF (default: the stored name for a file_id)."
+              },
+              "file_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Instead of file_content: the file_id of a PDF an earlier Morphyard tool returned. Give either file_content or file_id, not both."
               }
             },
-            "required": [
-              "file_content"
-            ],
             "type": "object"
           },
           "maxItems": 20,
@@ -860,6 +1009,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       },
       "required": [
@@ -919,6 +1080,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       },
       "required": [
@@ -1038,6 +1211,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -1168,6 +1353,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -1240,6 +1437,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },
@@ -1314,6 +1523,18 @@
           ],
           "default": null,
           "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
     },

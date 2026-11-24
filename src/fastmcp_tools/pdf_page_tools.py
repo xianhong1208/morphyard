@@ -20,8 +20,8 @@ from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 from src.domain.convert import pdf_pages
-from src.domain.convert.service import resolve_artifact_input
-from src.domain.operations import Artifact, InputSource
+from src.domain.operations import InputSource
+from src.domain.operations.sources import input_source
 from src.fastmcp_tools.operation_tool import Inputs, Reply, add_operation_tool, upload
 from src.log import get_mcptools_logger
 
@@ -29,25 +29,26 @@ logger = get_mcptools_logger()
 
 
 class MergeInput(BaseModel):
-    """One PDF to merge"""
+    """One PDF to merge: the file itself or the file_id of an earlier result"""
 
-    file_content: str = Field(description="The PDF itself, base64-encoded.")
+    file_content: str | None = Field(
+        default=None,
+        description="The PDF itself, base64-encoded. Leave empty when file_id is given.")
     file_name: str | None = Field(
         default=None,
         description="Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for "
-                    "this file in the merged PDF.")
+                    "this file in the merged PDF (default: the stored name for a file_id).")
+    file_id: str | None = Field(
+        default=None,
+        description="Instead of file_content: the file_id of a PDF an earlier Morphyard "
+                    "tool returned. Give either file_content or file_id, not both.")
 
 
-def _merge_sources(kwargs: dict[str, Any], _detect: bool) -> list[InputSource]:
+def _merge_sources(kwargs: dict[str, Any], _detect: bool, owner: str) -> list[InputSource]:
     """One source per item, read in order (the first unreadable item raises)."""
-
-    def source(item: MergeInput) -> InputSource:
-        def resolve() -> Artifact:
-            src = resolve_artifact_input(item.file_content, item.file_name, None)
-            return Artifact(data=src.data, fmt=src.fmt, name=src.name,
-                            file_name=item.file_name)
-        return resolve
-    return [source(item) for item in kwargs.pop("files")]
+    return [input_source(owner=owner, file_content=item.file_content, file_id=item.file_id,
+                         file_name=item.file_name)
+            for item in kwargs.pop("files")]
 
 
 MERGE_FILES = Inputs(
@@ -57,7 +58,8 @@ MERGE_FILES = Inputs(
             min_length=2, max_length=pdf_pages.MAX_MERGE_FILES,
             description="The PDFs to merge, in the order they should appear: the first "
                         "item's pages come first. Each item carries one PDF as base64 in "
-                        "file_content plus its file_name. "
+                        "file_content plus its file_name, or the file_id of a PDF an "
+                        "earlier Morphyard tool returned. "
                         f"2 to {pdf_pages.MAX_MERGE_FILES} files, at most "
                         f"{pdf_pages.MAX_MERGE_TOTAL_MB} MB together.")],
     )],
@@ -71,10 +73,11 @@ def register_pdf_page_tools(mcp: FastMCP):
 
     add_operation_tool(mcp, "pdf_merge", """Merge several PDFs into one PDF, in the given order.
 
-        Pass every PDF yourself as base64 in `files` (this tool does not use the
-        single file_content upload slot of the other tools). If you only hold an
-        upload reference and cannot pass the bytes, tell the user merging needs the
-        files themselves. Encrypted PDFs are refused: remove their password first.
+        Pass every PDF yourself as base64 in `files`, or the file_id of a PDF an
+        earlier Morphyard tool returned (this tool does not use the single
+        file_content upload slot of the other tools). If you only hold an upload
+        reference and cannot pass the bytes, tell the user merging needs the files
+        themselves. Encrypted PDFs are refused: remove their password first.
         """, reply=Reply.FILES, returns=list, inputs=MERGE_FILES, inputs_at=0)
 
     add_operation_tool(mcp, "pdf_delete_pages", """Delete pages from a PDF and return the PDF without them.

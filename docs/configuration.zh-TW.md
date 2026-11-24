@@ -20,7 +20,7 @@
 | `MORPHYARD_SIGNING_KEY` | 自動產生 | 簽署下載連結的金鑰。 |
 | `MORPHYARD_FILE_TTL_SEC` | `3600` | 檔案保留的秒數（最多 86400）。 |
 | `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | 暫存上限：整體、每人。 |
-| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | 工具回傳檔案的方式（自 1.4 的下一個變更起生效）。 |
+| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | 工具回傳檔案的方式，見[回傳方式](#回傳方式)。 |
 | `LOG_LEVEL` | `INFO` | |
 
 YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 scope（例如 `mcp:tools:invoke`）；`auth.audience` 則可在註冊的 resource URI 不是 `<base_url>/mcp` 的少數情況下覆寫推導值。
@@ -35,7 +35,7 @@ YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 s
 
 ## 暫存檔案與下載連結
 
-Morphyard 會把檔案在伺服器上保留一小段時間，並發出有簽章的下載連結，讓大型結果不必以 base64 塞進模型的上下文。這個版本先放入暫存區與連結；工具改為回傳連結是 1.4 的下一個變更。
+Morphyard 會把每個結果檔案在伺服器上保留一小段時間，並發出有簽章的下載連結，讓大型結果不必以 base64 塞進模型的上下文，下一個工具也能用 `file_id` 取用它，不必再傳一次檔案內容。
 
 連結的樣子是 `<MORPHYARD_PUBLIC_URL>/files/<檔案 id>/<檔名>?exp=<unix 時間>&sig=<簽章>`。**任何拿到連結的人，在到期前都能下載**，和 S3 預簽網址一樣：只有擁有者的工具呼叫會拿到連結，擁有者檢查就發生在那裡。連結在 `exp` 到期或檔案被刪除時失效，以先到者為準。錯誤、過期或被竄改的連結，以及已不存在的檔案，都回同樣的 `404`，因此連結不會透露檔案是否曾經存在。下載一律以附件提供，並帶 `X-Content-Type-Options: nosniff`、`Cache-Control: private, no-store`、`Referrer-Policy: no-referrer` 與 `Content-Security-Policy: sandbox`，HTML 結果不會在本伺服器上當成網頁執行。查詢字串（簽章）不會寫進日誌。
 
@@ -48,7 +48,7 @@ Morphyard 會把檔案在伺服器上保留一小段時間，並發出有簽章�
 | `MORPHYARD_STORE_MAX_MB`（`files.max_total_mb`） | `2048` | 整個暫存區。 |
 | `MORPHYARD_STORE_OWNER_MAX_MB`（`files.max_per_owner_mb`） | `512` | 每人（token 的 `sub`；關閉驗證時所有人算同一人）。 |
 | `files.sweep_interval_sec` | `60` | 每隔這麼久、以及啟動時，刪除過期檔案。 |
-| `MORPHYARD_RESULT_DELIVERY`（`files.result_delivery`） | `auto` | 工具回傳檔案的方式，自 1.4 的下一個變更起生效：`auto` = 連結，檔案不超過 `MORPHYARD_INLINE_MAX_MB` 時另附 base64（會把內嵌檔案轉成 artifact 的 host 照常運作）；`inline` = 只有 base64，與 1.3 相同；`both` = 一律兩者都給；`link` = 只有連結。 |
+| `MORPHYARD_RESULT_DELIVERY`（`files.result_delivery`） | `auto` | 工具回傳檔案的方式：`auto`、`inline`、`both` 或 `link`，見[回傳方式](#回傳方式)。 |
 | `MORPHYARD_INLINE_MAX_MB`（`files.inline_max_mb`） | `10` | `auto` 的門檻。 |
 
 **暫存區滿了**時，新檔案會被拒絕，錯誤為 `storage_full` 並說明何時可重試；會先清掉過期檔案，但絕不刪除尚未過期的檔案來騰出空間，因此已發出的連結在標示的到期時間前都有效。每個檔案放在 `<store>/<擁有者的 sha256>/<檔案 id>/`（磁碟上沒有原始身分），先寫到暫存名稱再改名，當機也不會留下半個檔案。
@@ -56,6 +56,43 @@ Morphyard 會把檔案在伺服器上保留一小段時間，並發出有簽章�
 **重新啟動**會保留未過期的檔案與它們的連結。請把金鑰（`.signing_key` 或 `MORPHYARD_SIGNING_KEY`）和暫存區一起保留：若有檔案時金鑰遺失或變更，這些連結已無法驗證，啟動時會刪除這些檔案並記錄警告。只遺失暫存區、金鑰還在，則只會少了檔案。已存檔案的索引放在記憶體中，所以一個暫存區屬於一個伺服器程序。
 
 `GET /health` 的 `store` 顯示暫存區：`files`、`bytes`、`owners` 與上限——不含檔名或 id。
+
+### 回傳方式
+
+會產生檔案的工具，會把每個檔案放進暫存區（屬於呼叫者：token 的 `sub`；未啟用認證時為 `anonymous`），並回覆：
+
+1. **文字：** 工具原本的摘要，接著每個檔案一行，列出檔名、大小、`file_id` 與下載網址，以及連結的到期時間。網址放在文字裡，是因為有些 client（包括 Claude Code）會忽略 `resource_link`。
+2. **內嵌檔案：** 以 MCP embedded resource（base64）回傳，和 1.3 送出的區塊完全相同——是否附上依模式而定。
+3. **每個檔案一個 `resource_link`：** `uri`（簽章網址）、`name`、`mimeType`、`size`，說明欄寫著到期時間與 `file_id`。
+
+| 模式 | 內嵌檔案 | 連結 + `file_id` | 適用情況 |
+|---|---|---|---|
+| `auto`（預設） | 檔案不超過 `MORPHYARD_INLINE_MAX_MB`（10 MB）時附上 | 一律提供 | 會把內嵌檔案轉成 artifact（對話中的下載）的 host，日常大小的結果照常運作；大型結果不再塞滿模型的上下文：只回傳連結，文字也會說明檔案沒有附上。 |
+| `inline` | 一律附上 | 不提供（不存任何檔案） | 與 1.3 完全相同，給完全無法使用連結的 host。結果不會保存，所以無法用 `file_id` 交給下一個工具；不論多大，每個結果都會經過上下文。 |
+| `both` | 一律附上 | 一律提供 | 需要內嵌檔案、也想要連結的 host。大型結果佔用的上下文和 1.3 一樣多。 |
+| `link` | 從不附上 | 一律提供 | 會讀連結的 client（或用瀏覽器下載的使用者）：回覆最小。只看得懂內嵌檔案的 host 就不會顯示下載。 |
+
+`MORPHYARD_INLINE_MAX_MB` 以單一檔案計算：`pdf_split` 的結果可以小的部分內嵌、大的部分只給連結。base64 檔案在回覆中約佔原檔 1.33 倍，因此這個門檻是在「需要內嵌檔案的 host」與「模型上下文」之間取捨。
+
+沒有檔案的回答（`inspect_document`、`extract_text`、`pdf_metadata`、`list_supported_conversions`，或「這個 PDF 沒有加密」）在任何模式下都不變。
+
+暫存區放不下某個結果時，工具會回傳錯誤，說明是哪個上限、何時可以重試，而且這個結果的任何部分都不會留下（`pdf_split` 要嘛整組存好，要嘛完全不存）。結果本身就超過每人或整體上限時，會直接告知永遠放不下。
+
+### 用 file_id 串接工具
+
+每個接收檔案的工具都可以用 `file_id` 取代 `file_content`（`pdf_merge` 的項目也可以用 `{file_id}` 取代 `{file_content, file_name}`）。檔案直接從暫存區讀取，因此多步驟的工作不會把結果再送回模型：
+
+```python
+r1 = await client.call_tool("convert_document", {"file_content": md, "file_name": "report.md",
+                                                 "target_format": "pdf", "output_name": "report"})
+# r1 的文字："- report.pdf (20.8 KB, file_id f_o2UZ…): http://…/files/f_o2UZ…/report.pdf?exp=…&sig=…"
+r2 = await client.call_tool("pdf_watermark", {"text": "DRAFT", "file_id": "f_o2UZ…"})
+r3 = await client.call_tool("pdf_compress", {"file_id": "<r2 的 file_id>"})
+```
+
+- `file_content` 與 `file_id` 擇一，不能同時給。空的 `file_id` 視為沒有給（注入上傳檔的 host 會把放參照的參數清空）。
+- `file_id` 只有產生它的那個人能用，而且只到到期為止。不存在、已過期或屬於別人的 id 都得到同樣的回答，不會透露檔案是否存在。未啟用認證時，所有人都是同一個人（`anonymous`）。
+- 給 `file_id` 時仍可另給 `file_name` / `mime_type`；沒給就用存檔時的名稱與類型。一般的 50 MB 輸入上限照樣適用。
 
 ## Token 撤銷
 
