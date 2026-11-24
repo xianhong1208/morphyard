@@ -2,7 +2,8 @@
 
 Usage: uv run python main.py --config config/config.yaml
 
-Morphyard is a stateless conversion service: there is no database and no migration step.
+Morphyard has no database and no migration step. Its only state is the short-lived file store
+under MORPHYARD_DATA_DIR (see src/domain/files/), which is safe to delete.
 """
 import argparse
 import sys

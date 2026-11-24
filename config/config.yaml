@@ -53,6 +53,21 @@ convert:
   max_queued_conversions: ${MORPHYARD_MAX_QUEUED_CONVERSIONS:-}           # empty = 4 x the limit; 0 = no queue
   queue_timeout_sec: ${MORPHYARD_QUEUE_TIMEOUT:-30}                       # longest wait for a slot, seconds
 
+# Files kept on the server for a short time (results now; uploads and job outputs later),
+# handed out as signed download links: <public_url>/files/<id>/<name>?exp=...&sig=...
+# Anyone holding a link can download the file until it expires. When a cap is reached, new
+# files are refused; files that have not expired are never deleted to make room.
+files:
+  data_dir: "${MORPHYARD_DATA_DIR:-./data}"               # store + generated signing key (Docker: /app/data volume)
+  public_url: "${MORPHYARD_PUBLIC_URL:-}"                  # empty = MORPHYARD_BASE_URL
+  signing_key: "${MORPHYARD_SIGNING_KEY:-}"                # empty = generated once into <data_dir>/.signing_key
+  ttl_sec: ${MORPHYARD_FILE_TTL_SEC:-3600}                 # how long a file is kept, at most 86400 (24 h)
+  max_total_mb: ${MORPHYARD_STORE_MAX_MB:-2048}            # whole store
+  max_per_owner_mb: ${MORPHYARD_STORE_OWNER_MAX_MB:-512}   # per person (token `sub`)
+  sweep_interval_sec: 60                                   # expired files are deleted this often and at startup
+  result_delivery: "${MORPHYARD_RESULT_DELIVERY:-auto}"    # auto | inline | both | link
+  inline_max_mb: ${MORPHYARD_INLINE_MAX_MB:-10}            # auto: files up to this size also come back as base64
+
 modules:
   enabled:
     - morphyard

@@ -15,6 +15,12 @@ Everything is in [`config/config.yaml`](../config/config.yaml) and reads environ
 | `MORPHYARD_MAX_CONCURRENT_CONVERSIONS` | CPUs, at most 8 | Conversions running at once, all engines together. See [Concurrent conversions](#concurrent-conversions). |
 | `MORPHYARD_MAX_QUEUED_CONVERSIONS` | 4 × the limit | How many more wait for a slot; `0` refuses at once when every slot is taken. |
 | `MORPHYARD_QUEUE_TIMEOUT` | `30` | Seconds a request may wait for a slot before it is refused as busy. |
+| `MORPHYARD_DATA_DIR` | `./data` | Stored files and the generated link-signing key. See [Stored files and download links](#stored-files-and-download-links). |
+| `MORPHYARD_PUBLIC_URL` | `MORPHYARD_BASE_URL` | Address download links point at. |
+| `MORPHYARD_SIGNING_KEY` | generated | Key that signs download links. |
+| `MORPHYARD_FILE_TTL_SEC` | `3600` | Seconds a stored file is kept (at most 86400). |
+| `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | Store caps: whole store, per person. |
+| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | How tools return files (from the next 1.4 change on). |
 | `LOG_LEVEL` | `INFO` | |
 
 In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:invoke` on every token, and `auth.audience` overrides the derived audience for the rare case where the registered resource URI is not `<base_url>/mcp`.
@@ -26,6 +32,30 @@ Each conversion takes one slot for its whole run (every hop of a multi-hop path 
 A request that finds every slot taken waits in a first-in, first-out queue. It is refused straight away when `MORPHYARD_MAX_QUEUED_CONVERSIONS` requests are already waiting, and after waiting `MORPHYARD_QUEUE_TIMEOUT` seconds. The refusal is an MCP tool error that says the server is busy, that nothing was started and to retry the same call after a few seconds (over HTTP it would be `503` with a `Retry-After` header). `GET /health` shows the current state under `conversions`: `running`, `queued` and the three limits.
 
 The default limit is the number of CPUs the process may use, capped at 8 because LibreOffice and Tesseract need a few hundred MB each and memory usually runs out before CPUs do. Raise it on a large machine with memory to spare; lower it on a small one. Each waiting request holds its upload in memory (up to `MAX_INPUT_MB`), which is what the queue length bounds. The limit applies per server process: with several workers or replicas, each has its own.
+
+## Stored files and download links
+
+Morphyard keeps files on the server for a short time and hands out signed download links to them, so a large result does not have to travel through the model's context as base64. In this release the store and the links are in place; tools start returning links in the next 1.4 change.
+
+A link looks like `<MORPHYARD_PUBLIC_URL>/files/<file id>/<name>?exp=<unix time>&sig=<signature>`. **Anyone holding it can download the file until it expires**, the way S3 pre-signed URLs work: only the owner's tool call is given the link, which is where the owner check happens. A link works until its `exp` or until the file is deleted, whichever comes first. A wrong, expired or tampered link and a file that is gone all get the same `404`, so a link tells nobody whether a file ever existed. Downloads are served as attachments with `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer` and `Content-Security-Policy: sandbox`, so an HTML result never runs as a page on this server. The query string (the signature) is never written to the logs.
+
+| Variable / setting | Default | Description |
+|---|---|---|
+| `MORPHYARD_DATA_DIR` (`files.data_dir`) | `./data` | The store lives in `<data_dir>/store`, the generated key in `<data_dir>/.signing_key`. The Docker image declares a volume at `/app/data`. |
+| `MORPHYARD_PUBLIC_URL` (`files.public_url`) | `MORPHYARD_BASE_URL` | The address people's browsers and agents reach this server at. Set it when the MCP address is internal (behind a reverse proxy, or a LAN name). Startup warns when it is a loopback address while the server listens on all interfaces. |
+| `MORPHYARD_SIGNING_KEY` (`files.signing_key`) | generated | At least 32 characters (`openssl rand -hex 32`). Unset: 32 random bytes are generated once into `<data_dir>/.signing_key` (mode 600). In the YAML it must stay an `${ENV_VAR}` reference; a literal value refuses to start. A key file that cannot be read, or is too short, also refuses to start — it is never replaced silently. |
+| `MORPHYARD_FILE_TTL_SEC` (`files.ttl_sec`) | `3600` | How long a file is kept, at most 86400 (24 h). A tool may ask for less, never more. |
+| `MORPHYARD_STORE_MAX_MB` (`files.max_total_mb`) | `2048` | The whole store. |
+| `MORPHYARD_STORE_OWNER_MAX_MB` (`files.max_per_owner_mb`) | `512` | Per person (the token's `sub`; everyone is one person when authentication is off). |
+| `files.sweep_interval_sec` | `60` | Expired files are deleted this often, and at startup. |
+| `MORPHYARD_RESULT_DELIVERY` (`files.result_delivery`) | `auto` | How tools return files, used from the next 1.4 change on: `auto` = a link, plus the file inline as base64 when it is at most `MORPHYARD_INLINE_MAX_MB` (so hosts that turn inline files into artifacts keep working); `inline` = base64 only, as in 1.3; `both` = always both; `link` = the link only. |
+| `MORPHYARD_INLINE_MAX_MB` (`files.inline_max_mb`) | `10` | The `auto` threshold. |
+
+**When the store is full** a new file is refused with a `storage_full` error that says when to retry; expired files are swept first, and a file that has not expired is never deleted to make room, so a link that was handed out keeps working until it says it expires. Each file sits in `<store>/<sha256 of the owner>/<file id>/` (no raw identity on disk) and is written under a temporary name, then renamed, so a crash never leaves half a file behind.
+
+**Restarts** keep unexpired files and their links. Keep the key (`.signing_key` or `MORPHYARD_SIGNING_KEY`) together with the store: if the key is lost or changes while files are stored, their links can no longer be checked, so the files are deleted at startup with a warning. Losing the store with the key kept only loses the files. The index of stored files is held in memory, so one store belongs to one server process.
+
+`GET /health` shows the store under `store`: `files`, `bytes`, `owners` and the caps — never file names or ids.
 
 ## Token revocation
 

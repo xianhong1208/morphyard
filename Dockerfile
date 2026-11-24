@@ -58,6 +58,10 @@ RUN uv sync --no-dev
 # Warm it up at build time so the first user request does not wait for nothing.
 RUN soffice --headless --terminate_after_init >/dev/null 2>&1 || true
 
+# Stored files and the download-link signing key. Keep the volume to keep links working
+# across container re-creates; losing it only loses files that expire within the hour anyway.
+VOLUME /app/data
+
 EXPOSE 5055
 
 # --no-sync: the image is already synced without the dev group. A plain `uv run`
