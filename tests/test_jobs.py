@@ -509,8 +509,10 @@ async def test_progress_notifications_with_a_progress_token(tmp_path, monkeypatc
 
     async with _client() as client:
         result = await client.call_tool("convert_document", {
-            "target_format": "html", "output_name": "n", "file_content": "# Hi\n\ntext",
-            "file_name": "n.md"}, progress_handler=on_progress)
+            # XML -> Markdown runs on the built-in text engine (no system binary needed in CI)
+            "target_format": "md", "output_name": "n",
+            "file_content": "<?xml version='1.0'?><note>hello</note>", "file_name": "n.xml"},
+            progress_handler=on_progress)
     assert not result.is_error
     assert len(seen) >= 2
     values = [p for p, _ in seen]
