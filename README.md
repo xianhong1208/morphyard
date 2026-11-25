@@ -14,7 +14,7 @@ Morphyard exposes its conversions as MCP tools that any MCP-capable client (Clau
 
 ## What a call looks like
 
-A Word file goes in as base64; a PDF comes back as an MCP embedded resource, with a summary the model can relay. From a real run against a local server (FastMCP client):
+A Word file goes in as base64; a PDF comes back with a summary the model can relay, a download link and a `file_id` (the file is kept on the server for an hour), and — when it is at most 10 MB — the file itself as an MCP embedded resource, as before. From a real run against a local server (FastMCP client):
 
 ```python
 await client.call_tool("convert_document", {
@@ -29,8 +29,15 @@ await client.call_tool("convert_document", {
 TEXT  Conversion complete: report.pdf
       Path: docx → pdf (engines: libreoffice)
       Size: 23.4 KB
+
+      Download link (valid until 2026-11-24 09:56 UTC, about 60 min):
+      - report.pdf (23.4 KB, file_id f_o2UZNq6ujcit_LQkGJ6Rcg): https://morphyard.example/files/f_o2UZNq6ujcit_LQkGJ6Rcg/report.pdf?exp=…&sig=…
+      To use a result in another Morphyard tool, pass its file_id instead of file_content.
 FILE  file:///report.pdf  application/pdf  23963 bytes
+LINK  https://morphyard.example/files/f_o2UZNq6ujcit_LQkGJ6Rcg/report.pdf?exp=…&sig=…  report.pdf  23963 bytes
 ```
+
+The next tool can work on that result by `file_id` instead of the bytes (`{"text": "DRAFT", "file_id": "f_o2UZ…"}` to `pdf_watermark`). A result over 10 MB comes back as the link only, so it never floods the model's context; `MORPHYARD_RESULT_DELIVERY` switches between `auto`, `inline` (exactly 1.3), `both` and `link` — see [Delivery modes](docs/configuration.md#delivery-modes).
 
 And `extract_text` on the same file returns Markdown for the model to read:
 
@@ -51,7 +58,7 @@ And `extract_text` on the same file returns Markdown for the model to read:
 
 ## Key features
 
-- **One contract for every tool.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`, `pdf_unlock`, `pdf_compress`, `pdf_metadata`, `pdf_strip_metadata`, and the page tools `pdf_merge`, `pdf_delete_pages`, `pdf_reorder_pages`, `pdf_watermark`, `pdf_page_numbers`, `pdf_to_images`, `images_to_pdf`. Every single-file tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them; `pdf_merge` takes a list of `{file_content, file_name}` items instead.
+- **One contract for every tool.** `convert_document`, `extract_text`, `inspect_document`, `list_supported_conversions`, `pdf_extract_pages`, `pdf_split`, `pdf_rotate`, `pdf_protect`, `pdf_unlock`, `pdf_compress`, `pdf_metadata`, `pdf_strip_metadata`, and the page tools `pdf_merge`, `pdf_delete_pages`, `pdf_reorder_pages`, `pdf_watermark`, `pdf_page_numbers`, `pdf_to_images`, `images_to_pdf`. Every single-file tool takes the same `file_content` / `file_name` / `mime_type` triple, so a host that injects uploaded files as base64 works with all of them, or a `file_id` of an earlier result; `pdf_merge` takes a list of `{file_content, file_name}` or `{file_id}` items instead.
 - **PDF page tools.** Merge PDFs in order with one bookmark per file; delete pages; put pages in a new order (every page listed once, so none is lost by accident); add a text or image watermark (centre, diagonal or tiled, with opacity, colour and rotation); add page numbers (`{page} / {total}`), a header and a footer. Watermarks and page numbers sit upright as the reader sees each page, on mixed page sizes and rotated pages, and Chinese text is drawn with an embedded font.
 - **PDF compression, passwords and metadata.** `pdf_compress` shrinks a PDF (lossless restructuring, or images downsampled and re-encoded at `balanced` / `small`) and reports the sizes; `pdf_protect` sets an AES-256 open password and/or permissions (print, copy, modify, annotate, fill forms) under an owner password; `pdf_unlock` removes them given the password; `pdf_metadata` reports Info, XMP, encryption, scripts and attachments; `pdf_strip_metadata` removes them.
 - **Six engines, chosen by fidelity.** LibreOffice for layout-faithful Office ↔ PDF, Pandoc for structure-preserving text formats, [firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) for fast document → Markdown extraction, Tesseract for OCR, Pillow for images, and a thin text engine for JSON / XML / TSV. A missing engine disables its paths at startup instead of failing at request time.
@@ -59,7 +66,7 @@ And `extract_text` on the same file returns Markdown for the model to read:
 - **Format detection without a file name.** Extension → MIME → container inspection (ZIP directory / OLE2 streams) → magic bytes. Sixteen formats are recognised with no name and no MIME type at all.
 - **Documents cannot reach out.** Conversions never read local files or fetch URLs a document points at, and LibreOffice never runs macros.
 - **Standards-based auth.** Bearer tokens are verified against MCP Gate's JWKS (issuer, audience, optional scopes); the server publishes `/.well-known/oauth-protected-resource/mcp` so OAuth-aware clients discover where to sign in. With the optional revocation feed, a token revoked in MCP Gate stops working here within one poll interval (30 s by default).
-- **Stored files and signed download links.** Files can be kept on the server for an hour (settable, at most a day) and fetched from an expiring signed link, with caps per person and in total that refuse new files rather than delete unexpired ones. Tools switch to returning links in the next 1.4 change; small results keep coming back inline too. See [docs/configuration.md](docs/configuration.md#stored-files-and-download-links).
+- **Results as download links.** Every result file is kept on the server for an hour (settable, at most a day) and the reply carries an expiring signed link and a `file_id`, which any tool takes as input, so a multi-step job (convert → watermark → compress) never sends a file back through the model. Results up to 10 MB still come back inline too (`auto`), so hosts that turn inline files into artifacts keep working; larger ones are a link only. Caps per person and in total refuse new files rather than delete unexpired ones. See [docs/configuration.md](docs/configuration.md#stored-files-and-download-links).
 - **Runs anywhere.** One Docker image with all engines baked in, or a plain `uv run`.
 
 Supported: pdf, docx, doc, odt, rtf, epub; xlsx, xls, ods, csv, tsv; pptx, ppt, odp; md, html, txt, rst, tex, json, xml; png, jpg, webp, gif, bmp, tiff. The full tool and format tables are in [docs/tools.md](docs/tools.md).
@@ -124,7 +131,7 @@ curl -i -X POST http://localhost:5055/mcp                                  # 401
 For a local experiment without MCP Gate, start it with authentication off and run the protocol smoke test:
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 

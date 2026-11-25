@@ -24,7 +24,7 @@ uv run python scripts/mcp_smoke.py         # protocol check with a real MCP clie
 The protocol check needs a server without authentication on port 5056. Start it in another terminal first:
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 ```
 
 The three layers answer different questions — is the logic right, do the engines actually produce valid files, can a client really use the tools — and each has caught bugs the others cannot. [docs/architecture.md](architecture.md#testing) says which.

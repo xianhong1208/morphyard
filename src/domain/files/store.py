@@ -59,8 +59,10 @@ _COPY_CHUNK = 1024 * 1024
 class StoreFullError(DomainException):
     """The store (or this owner's share of it) has no room for the file."""
 
-    def __init__(self, message: str, *, scope: Literal["total", "owner"], retry_after_sec: int):
-        super().__init__(message, "storage_full", {"scope": scope, "retry_after_sec": retry_after_sec})
+    def __init__(self, message: str, *, scope: Literal["total", "owner"], retry_after_sec: int,
+                 never_fits: bool = False):
+        super().__init__(message, "storage_full", {"scope": scope, "retry_after_sec": retry_after_sec,
+                                                   "never_fits": never_fits})
 
 
 @dataclass(frozen=True)
@@ -289,6 +291,16 @@ class LocalStore:
 
     def _reserve(self, okey: str, size: int) -> None:
         """Claim room for `size` bytes or raise StoreFullError (after one sweep of expired files)."""
+        for cap, scope, whose in ((self.max_owner_bytes, "owner", "for one person"),
+                                  (self.max_total_bytes, "total", "in total")):
+            if size > cap:
+                # Waiting for files to expire cannot help: say so instead of a retry time.
+                raise StoreFullError(
+                    f"The file ({size / (1024 * 1024):.1f} MB) is larger than the "
+                    f"{cap // (1024 * 1024)} MB this server keeps {whose}, so it can never be "
+                    f"stored.",
+                    scope=scope, retry_after_sec=0, never_fits=True,
+                )
         with self._lock:
             for attempt in (0, 1):
                 total = self._total_bytes() + self._reserved_total

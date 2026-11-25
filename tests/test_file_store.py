@@ -293,3 +293,15 @@ class TestStats:
         assert stats == {"files": 2, "bytes": 5, "owners": 2, "max_bytes": 10 * KB,
                          "max_bytes_per_owner": 4 * KB, "ttl_sec": 3600}
         assert "secret" not in json.dumps(stats)
+
+
+def test_a_file_larger_than_a_cap_never_fits(tmp_path):
+    """TC-STORE-025: a file larger than the per-person or the total cap is refused at once as
+    never fitting (no retry time), even with an empty store."""
+    for size, scope, owner_cap in ((5 * KB, "owner", 4 * KB), (9 * KB, "total", 20 * KB)):
+        store = _store(tmp_path / scope, max_owner_bytes=owner_cap, max_total_bytes=8 * KB)
+        with pytest.raises(StoreFullError) as e:
+            store.put_bytes("alice", b"x" * size, name="a", mime="x/y")
+        assert e.value.details == {"scope": scope, "retry_after_sec": 0, "never_fits": True}
+        assert "can never be stored" in e.value.message
+        store.put_bytes("alice", b"x" * 4 * KB, name="a", mime="x/y")

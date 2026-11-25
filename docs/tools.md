@@ -32,7 +32,7 @@
 
 ### PDF page tools
 
-- **Input.** `pdf_merge` takes `files`, a list of `{file_content, file_name}` items (base64), because a host's upload injection fills only one `file_content` per call: the caller passes the bytes itself. The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
+- **Input.** `pdf_merge` takes `files`, a list of `{file_content, file_name}` items (base64) or `{file_id}` items (an earlier result), because a host's upload injection fills only one `file_content` per call: the caller passes the bytes itself. The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
 - **Pages.** Page selections use the same 1-based syntax as `pdf_extract_pages` (`1-3,7,10-`). `pdf_reorder_pages` insists that every page appears exactly once and names the missing or repeated ones; use `pdf_delete_pages` to drop pages.
 - **Kept.** Merge nests each file's bookmarks under a bookmark named after the file. Delete and reorder keep the bookmarks whose page survives, pointing at its new place. Watermark and page numbers keep bookmarks, links, form fields and metadata.
 - **Placement.** Watermarks, numbers, headers and footers are drawn in the page as the reader sees it (the crop box, turned by the page's rotation), so they sit upright on landscape and rotated pages and on documents that mix page sizes. A single watermark or a header too long for the page is shrunk to fit.
@@ -70,11 +70,11 @@ client ──(bearer token)──▶ /mcp ──▶ tools ──▶ service.py �
                              └── JWTVerifier(jwks_uri = MCP_GATE_URL/.well-known/jwks.json)
 ```
 
-1. **Input.** Tools receive `file_content` (base64), `file_name` and `mime_type`. Hosts that manage uploads usually inject the base64 automatically; the parameter descriptions are written so the model puts the upload reference in `file_content` and nothing else.
+1. **Input.** Tools receive `file_content` (base64), `file_name` and `mime_type`, or instead a `file_id`: a result an earlier Morphyard tool returned, still on the server (see [Chaining tools with file_id](configuration.md#chaining-tools-with-file_id)). Hosts that manage uploads usually inject the base64 automatically; the parameter descriptions are written so the model puts the upload reference in `file_content` and nothing else.
 2. **Detection.** `detect_format()` tries the extension, then MIME, then looks inside the container, then magic bytes — because in practice the file name is often missing.
 3. **Planning.** `plan_conversion()` finds a direct engine or a path of up to three hops, ranked by fidelity, hop count and intermediate-format preference. Direct paths are never refused. Multi-hop paths that drop below `structural` fidelity are executed with a warning attached; with `allow_quality_loss=false` they are refused instead.
 4. **Execution.** Engines run as subprocesses inside a temporary workspace with a timeout; scanned PDFs fall back from text extraction to OCR automatically.
-5. **Output.** Tools return `[summary text, File(...)]`; the file arrives as an MCP `EmbeddedResource`.
+5. **Output.** A result file is kept on the server for an hour and the reply carries its download link and `file_id` in the text and as an MCP `resource_link`; by default (`auto`) a file up to 10 MB also arrives inline as an MCP `EmbeddedResource`, as before 1.4. See [Delivery modes](configuration.md#delivery-modes).
 
 | Term | Meaning |
 |---|---|
@@ -86,7 +86,7 @@ The engine table, the planner's rules and the format-detection details are in [d
 
 ## Known limits
 
-- One file per call, except `pdf_merge`, which takes its files as base64 in a list (a host that can inject only one upload cannot feed it yet; several uploads in one call is planned for 1.4). For several images, `images_to_pdf` takes a ZIP.
+- One file per call, except `pdf_merge`, which takes its files as base64 or `file_id`s in a list (a host that can inject only one upload cannot feed it base64 yet; several uploads in one call is planned for 1.4). For several images, `images_to_pdf` takes a ZIP. A multi-step job (convert, then watermark, then compress) passes each result on by `file_id`, so no file travels back through the model.
 - 50 MB per file, 30 pages per OCR run.
 - A limited number of conversions run at once (by default the CPU count, at most 8); more wait in a queue, and past its length or wait time a tool answers "the server is busy" and should be called again a little later. See [Concurrent conversions](configuration.md#concurrent-conversions).
 - PDF → editable formats is always lossy; tables inside PDFs are recovered heuristically.

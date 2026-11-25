@@ -24,7 +24,7 @@ uv run python scripts/mcp_smoke.py         # protocol check with a real MCP clie
 協定檢查需要一個在 5056 埠、關閉認證的伺服器。先在另一個終端機啟動：
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 ```
 
 三層各自回答不同的問題 —— 邏輯對不對、引擎是否真的產出有效檔案、client 是否真的能使用這些工具 —— 而每一層都抓到過其他層抓不到的 bug，詳見 [docs/architecture.md](architecture.md#testing)。

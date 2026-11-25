@@ -20,7 +20,7 @@ Everything is in [`config/config.yaml`](../config/config.yaml) and reads environ
 | `MORPHYARD_SIGNING_KEY` | generated | Key that signs download links. |
 | `MORPHYARD_FILE_TTL_SEC` | `3600` | Seconds a stored file is kept (at most 86400). |
 | `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | Store caps: whole store, per person. |
-| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | How tools return files (from the next 1.4 change on). |
+| `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | How tools return files. See [Delivery modes](#delivery-modes). |
 | `LOG_LEVEL` | `INFO` | |
 
 In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:invoke` on every token, and `auth.audience` overrides the derived audience for the rare case where the registered resource URI is not `<base_url>/mcp`.
@@ -35,7 +35,7 @@ The default limit is the number of CPUs the process may use, capped at 8 because
 
 ## Stored files and download links
 
-Morphyard keeps files on the server for a short time and hands out signed download links to them, so a large result does not have to travel through the model's context as base64. In this release the store and the links are in place; tools start returning links in the next 1.4 change.
+Morphyard keeps every result file on the server for a short time and hands out a signed download link to it, so a large result does not have to travel through the model's context as base64, and the next tool can take it by `file_id` instead of the bytes.
 
 A link looks like `<MORPHYARD_PUBLIC_URL>/files/<file id>/<name>?exp=<unix time>&sig=<signature>`. **Anyone holding it can download the file until it expires**, the way S3 pre-signed URLs work: only the owner's tool call is given the link, which is where the owner check happens. A link works until its `exp` or until the file is deleted, whichever comes first. A wrong, expired or tampered link and a file that is gone all get the same `404`, so a link tells nobody whether a file ever existed. Downloads are served as attachments with `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer` and `Content-Security-Policy: sandbox`, so an HTML result never runs as a page on this server. The query string (the signature) is never written to the logs.
 
@@ -48,7 +48,7 @@ A link looks like `<MORPHYARD_PUBLIC_URL>/files/<file id>/<name>?exp=<unix time>
 | `MORPHYARD_STORE_MAX_MB` (`files.max_total_mb`) | `2048` | The whole store. |
 | `MORPHYARD_STORE_OWNER_MAX_MB` (`files.max_per_owner_mb`) | `512` | Per person (the token's `sub`; everyone is one person when authentication is off). |
 | `files.sweep_interval_sec` | `60` | Expired files are deleted this often, and at startup. |
-| `MORPHYARD_RESULT_DELIVERY` (`files.result_delivery`) | `auto` | How tools return files, used from the next 1.4 change on: `auto` = a link, plus the file inline as base64 when it is at most `MORPHYARD_INLINE_MAX_MB` (so hosts that turn inline files into artifacts keep working); `inline` = base64 only, as in 1.3; `both` = always both; `link` = the link only. |
+| `MORPHYARD_RESULT_DELIVERY` (`files.result_delivery`) | `auto` | How tools return files: `auto`, `inline`, `both` or `link`. See [Delivery modes](#delivery-modes). |
 | `MORPHYARD_INLINE_MAX_MB` (`files.inline_max_mb`) | `10` | The `auto` threshold. |
 
 **When the store is full** a new file is refused with a `storage_full` error that says when to retry; expired files are swept first, and a file that has not expired is never deleted to make room, so a link that was handed out keeps working until it says it expires. Each file sits in `<store>/<sha256 of the owner>/<file id>/` (no raw identity on disk) and is written under a temporary name, then renamed, so a crash never leaves half a file behind.
@@ -56,6 +56,43 @@ A link looks like `<MORPHYARD_PUBLIC_URL>/files/<file id>/<name>?exp=<unix time>
 **Restarts** keep unexpired files and their links. Keep the key (`.signing_key` or `MORPHYARD_SIGNING_KEY`) together with the store: if the key is lost or changes while files are stored, their links can no longer be checked, so the files are deleted at startup with a warning. Losing the store with the key kept only loses the files. The index of stored files is held in memory, so one store belongs to one server process.
 
 `GET /health` shows the store under `store`: `files`, `bytes`, `owners` and the caps — never file names or ids.
+
+### Delivery modes
+
+A tool that produces files puts each one in the store (owned by the caller: the token's `sub`, or `anonymous` when authentication is off) and replies with:
+
+1. **Text:** the tool's summary, then one line per file with its name, size, `file_id` and download URL, and when the links expire. The URL is in the text because some clients (Claude Code among them) ignore `resource_link`.
+2. **The file inline** as an MCP embedded resource (base64), exactly the block 1.3 sent — depending on the mode.
+3. **A `resource_link`** per file: `uri` (the signed URL), `name`, `mimeType`, `size`, and a description with the expiry and `file_id`.
+
+| Mode | Inline file | Link + `file_id` | Use it when |
+|---|---|---|---|
+| `auto` (default) | when the file is at most `MORPHYARD_INLINE_MAX_MB` (10 MB) | always | Hosts that turn an inline file into an artifact (a download in the chat) keep working for everyday results, and a large result no longer floods the model's context: it comes back as a link only, and the text says it is not attached. |
+| `inline` | always | never (nothing is stored) | Exactly the 1.3 behaviour, for a host that cannot use links at all. Results are not stored, so they cannot be passed on by `file_id`; every result travels through the context, however large. |
+| `both` | always | always | A host that needs the inline file and also wants links. Large results cost as much context as in 1.3. |
+| `link` | never | always | Clients that read links (or a browser user): the smallest replies. A host that only understands inline files shows no download. |
+
+`MORPHYARD_INLINE_MAX_MB` is per file: a `pdf_split` result can have its small parts inline and its large parts as links. A base64 file costs about 1.33 × its size in the reply, so the threshold is a trade-off between hosts that need the file inline and the model's context.
+
+Answers without a file (`inspect_document`, `extract_text`, `pdf_metadata`, `list_supported_conversions`, or "this PDF is not encrypted") are unchanged in every mode.
+
+If the store has no room for a result, the tool answers with an error that names the limit and when to retry, and nothing of that result is stored (a `pdf_split` is stored whole or not at all). A result larger than the per-person or total cap is refused as one that can never fit.
+
+### Chaining tools with file_id
+
+Every tool that takes a file also takes `file_id` in place of `file_content` (and `pdf_merge` items take `{file_id}` in place of `{file_content, file_name}`). The file is read from the store, so a multi-step job never sends a result back through the model:
+
+```python
+r1 = await client.call_tool("convert_document", {"file_content": md, "file_name": "report.md",
+                                                 "target_format": "pdf", "output_name": "report"})
+# r1's text: "- report.pdf (20.8 KB, file_id f_o2UZ…): http://…/files/f_o2UZ…/report.pdf?exp=…&sig=…"
+r2 = await client.call_tool("pdf_watermark", {"text": "DRAFT", "file_id": "f_o2UZ…"})
+r3 = await client.call_tool("pdf_compress", {"file_id": "<file_id from r2>"})
+```
+
+- Give `file_content` **or** `file_id`, not both. An empty `file_id` counts as not given (a host that injects an upload blanks the parameter the reference was in).
+- A `file_id` works only for the person whose call produced it, until it expires. An id that is unknown, expired or someone else's gets the same answer, so it never tells whether a file exists. With authentication off, everyone is the same person (`anonymous`).
+- `file_name` / `mime_type` may still be given with a `file_id`; otherwise the stored name and type are used. The usual 50 MB input limit applies.
 
 ## Token revocation
 

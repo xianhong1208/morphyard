@@ -84,7 +84,17 @@ the user wants **to receive a file** -> `convert_document`.
    host fills it in automatically. `target_format` holds only the target format
    (e.g. `"pdf"`).
 
-8. **Always pass `output_name` to `convert_document`, set to the stem of the
+8. **Give the user the download link.** A tool that produces a file lists
+   each file's download link (and when it expires) in its text. If a file is
+   marked "link only" it is not attached to the reply: give the user that
+   link. The links stop working after the time shown.
+
+9. **Pass a result on by its `file_id`.** To work further on a file a tool
+   just returned (convert, then watermark, then compress), call the next tool
+   with `file_id` set to that result's `file_id` instead of `file_content`;
+   do not copy the file's content back. Give one of the two, never both.
+
+10. **Always pass `output_name` to `convert_document`, set to the stem of the
    original file name.** When the user uploads
    `[Uploaded Artifact: "Vendor Review 2026.pptx"]`, `output_name` is
    `Vendor Review 2026` (no extension). Without it the user downloads a file
