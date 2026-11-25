@@ -384,7 +384,7 @@ def _alive(pid: int) -> bool:
     try:
         with open(f"/proc/{pid}/stat") as f:
             return f.read().split(") ")[1].split()[0] != "Z"
-    except FileNotFoundError:
+    except OSError:  # FileNotFoundError, or ESRCH while the process is being reaped
         return False
 
 
