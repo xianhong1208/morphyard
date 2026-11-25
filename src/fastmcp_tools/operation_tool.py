@@ -38,19 +38,20 @@ import asyncio
 import inspect
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
-from fastmcp.server.dependencies import get_access_token
+from fastmcp.server.dependencies import get_access_token, get_context
 from fastmcp.utilities.types import File
 from mcp_types import ResourceLink
 from pydantic import Field
 
 from src.domain.convert.types import mime_type_for
 from src.domain.files import KeptFile, NewFile, StoreFullError, get_runtime, keep_results
+from src.domain.jobs import CANCELLED, COMPLETED, Event, Job, get_jobs
 from src.domain.operations import (
     InputSource,
     OperationRefused,
@@ -246,6 +247,39 @@ def resource_link(k: KeptFile) -> ResourceLink:
     )
 
 
+def _store_full_error(full: StoreFullError) -> ToolError:
+    if full.details.get("never_fits"):
+        advice = ("Nothing was stored. Tell the user; retrying will not succeed (the "
+                  "operator can raise MORPHYARD_STORE_OWNER_MAX_MB / MORPHYARD_STORE_MAX_MB, "
+                  "or a smaller result may fit).")
+    else:
+        advice = (f"Retry after about {full.details.get('retry_after_sec')} s. Nothing was "
+                  "stored. Tell the user; retrying at once will not succeed.")
+    return ToolError(f"The result could not be kept on the server: {full.message} {advice}")
+
+
+async def _keep(runtime, result: OpResult, owner: str) -> list[KeptFile]:
+    new = [NewFile(data=f.data, name=f"{f.name}.{f.fmt}", mime=output_mime(f.fmt))
+           for f in result.files]
+    try:
+        return await asyncio.to_thread(keep_results, runtime.store, runtime.signer, owner, new)
+    except StoreFullError as full:
+        raise _store_full_error(full) from None
+
+
+def _shape(summary: str, typed: list, sizes: list[int], kept: list[KeptFile], mode: str,
+           inline_max_bytes: int) -> list:
+    """[summary + links, inline files, resource links] for the link-giving modes."""
+    if mode == "both":
+        attached = [True] * len(kept)
+    elif mode == "auto":
+        attached = [size <= inline_max_bytes for size in sizes]
+    else:
+        attached = [False] * len(kept)
+    text = f"{summary}\n\n{links_text(kept, attached, mode, inline_max_bytes)}"
+    return [text, *(t for t, a in zip(typed, attached) if a), *(resource_link(k) for k in kept)]
+
+
 async def deliver_files(result: OpResult, owner: str) -> list:
     """[summary, file, ...] shaped by the delivery mode (see the module docstring)."""
     typed = [TypedFile(f.data, f.fmt, f.name) for f in result.files]
@@ -253,27 +287,9 @@ async def deliver_files(result: OpResult, owner: str) -> list:
     mode = runtime.result_delivery if runtime is not None else "inline"
     if mode == "inline":
         return [result.summary, *typed]
-    new = [NewFile(data=f.data, name=f"{f.name}.{f.fmt}", mime=output_mime(f.fmt))
-           for f in result.files]
-    try:
-        kept = await asyncio.to_thread(keep_results, runtime.store, runtime.signer, owner, new)
-    except StoreFullError as full:
-        if full.details.get("never_fits"):
-            advice = ("Nothing was stored. Tell the user; retrying will not succeed (the "
-                      "operator can raise MORPHYARD_STORE_OWNER_MAX_MB / MORPHYARD_STORE_MAX_MB, "
-                      "or a smaller result may fit).")
-        else:
-            advice = (f"Retry after about {full.details.get('retry_after_sec')} s. Nothing was "
-                      "stored. Tell the user; retrying at once will not succeed.")
-        raise ToolError(f"The result could not be kept on the server: {full.message} {advice}") from None
-    if mode == "both":
-        attached = [True] * len(kept)
-    elif mode == "auto":
-        attached = [len(f.data) <= runtime.inline_max_bytes for f in result.files]
-    else:
-        attached = [False] * len(kept)
-    text = f"{result.summary}\n\n{links_text(kept, attached, mode, runtime.inline_max_bytes)}"
-    return [text, *(t for t, a in zip(typed, attached) if a), *(resource_link(k) for k in kept)]
+    kept = await _keep(runtime, result, owner)
+    return _shape(result.summary, typed, [len(f.data) for f in result.files], kept, mode,
+                  runtime.inline_max_bytes)
 
 
 class Reply(Enum):
@@ -307,6 +323,183 @@ class Reply(Enum):
         return [message]
 
 
+# ------------------------------------------------------------------------
+# Jobs (issue #34)
+#
+# A tool whose operation takes a conversion slot runs as a job (src/domain/jobs.py). The call
+# waits up to jobs.wait_sec: a job done by then is answered exactly as before, through
+# Reply.success, and is forgotten. Otherwise the reply is a job handle (job id + how to poll),
+# and when the job ends its result is kept (`_keep_job_result`) for job_status, which answers
+# with the same reply the tool would have given (`finished_reply`).
+# ------------------------------------------------------------------------
+
+# Each job tool's reply shape, by tool name (job_status answers in the tool's shape).
+_REPLIES: dict[str, "Reply"] = {}
+
+JOB_HINT = ("Long conversions continue in the background: when the reply says the work is "
+            "still running and gives a job_id, call job_status with that job_id to get the "
+            "result (do not call this tool again for the same file).")
+
+
+@dataclass
+class KeptResult:
+    """A job's result, kept after its caller stopped waiting.
+
+    Result files go to the file store (whatever the delivery mode: there is nowhere else to
+    keep them) and are re-read when job_status answers; text and reports stay in memory.
+    Without a file store (tests that build tools alone) the whole result stays in memory.
+    """
+    summary: str = ""
+    kept: list[KeptFile] = field(default_factory=list)
+    outputs: list[tuple[str, str, int]] = field(default_factory=list)  # (format, name, size)
+    report: Any = None
+    memory: OpResult | None = None
+
+
+async def _keep_job_result(reply: "Reply", job: Job, result: OpResult) -> KeptResult:
+    runtime = get_runtime()
+    if runtime is None:
+        return KeptResult(memory=result)
+    if reply is Reply.REPORT or not result.files:
+        return KeptResult(summary=result.summary, report=result.report)
+    kept = await _keep(runtime, result, job.owner)
+    return KeptResult(summary=result.summary, kept=kept,
+                      outputs=[(f.fmt, f.name, len(f.data)) for f in result.files])
+
+
+class JobResultExpiredError(ToolError):
+    pass
+
+
+def _read_kept(k: KeptFile, owner: str) -> bytes:
+    store = get_runtime().store
+    if store.get(k.meta.file_id, owner) is None:
+        raise FileNotFoundError(k.meta.file_id)
+    with store.open(k.meta.file_id) as f:
+        return f.read()
+
+
+async def _deliver_kept(reply: "Reply", job: Job, k: KeptResult):
+    if k.memory is not None:
+        return await reply.success(k.memory, job.owner)
+    if reply is Reply.REPORT:
+        return k.report
+    if not k.kept:
+        return k.summary if reply is Reply.FILES_OR_TEXT else [k.summary]
+    runtime = get_runtime()
+    mode = runtime.result_delivery
+    sizes = [size for _, _, size in k.outputs]
+    wanted = [mode in ("inline", "both") or (mode == "auto" and size <= runtime.inline_max_bytes)
+              for size in sizes]
+    typed = []
+    try:
+        for kept, (fmt, name, _), want in zip(k.kept, k.outputs, wanted):
+            if not want:
+                # Not attached, but its link must still lead somewhere.
+                if runtime.store.get(kept.meta.file_id, job.owner) is None:
+                    raise FileNotFoundError(kept.meta.file_id)
+                typed.append(None)
+                continue
+            data = await asyncio.to_thread(_read_kept, kept, job.owner)
+            typed.append(TypedFile(data, fmt, name))
+    except FileNotFoundError:
+        raise JobResultExpiredError(
+            f"The result of job {job.id} ({job.tool}) has expired and was deleted: files are "
+            "kept for a limited time. Run the tool again to make it anew.") from None
+    if mode == "inline":
+        return [k.summary, *typed]
+    return _shape(k.summary, typed, sizes, k.kept, mode, runtime.inline_max_bytes)
+
+
+def _cancelled_text(job: Job) -> str:
+    return (f"Job {job.id} ({job.tool}) was cancelled before it finished; its conversion was "
+            "stopped and nothing was kept.")
+
+
+async def finished_reply(job: Job, reply: "Reply"):
+    """The reply for a finished job, the same the tool gives when it finishes in time."""
+    if job.state == CANCELLED:
+        return _cancelled_text(job)  # plain text, like the job handle
+    if job.state != COMPLETED:
+        error = job.error
+        if isinstance(error, OperationRefused):
+            return reply.refusal(error.message)
+        raise error.with_traceback(None)  # type: ignore[union-attr]
+    if job.kept is not None:
+        return await _deliver_kept(reply, job, job.kept)
+    return await reply.success(job.result, job.owner)
+
+
+def _handle_text(job: Job, wait_sec: float) -> str:
+    info = job.describe()
+    parts = [f"Still working on {job.tool} (job_id {job.id}): {info['status']} for "
+             f"{info['seconds']:g} s"]
+    if "queue_position" in info:
+        parts.append(f", position {info['queue_position']} in the queue")
+    if "last_message" in info:
+        parts.append(f"; last step: {info['last_message']}")
+    return (
+        "".join(parts) + ".\n"
+        f"Call job_status with job_id \"{job.id}\" to get the result; each call waits up to "
+        f"{wait_sec:g} s and returns as soon as the job is done. Tell the user the conversion "
+        "is in progress if it takes a while. To stop it, call job_cancel with the same job_id."
+    )
+
+
+def handle_reply(job: Job, reply: "Reply", wait_sec: float) -> str:
+    """What a call answers with when its job is still running: one plain text block (for
+    every reply shape; a list holding only a string would reach the client JSON-encoded)."""
+    return _handle_text(job, wait_sec)
+
+
+def progress_forwarder(info_ctx: Context | None = None):
+    """Pass a job's events on to the current request: as MCP progress notifications when the
+    request carries a progressToken, and the operation's own messages as log notifications
+    to `info_ctx` (the tools that always sent them)."""
+    try:
+        request_ctx = get_context()
+    except RuntimeError:
+        request_ctx = None
+    if request_ctx is None and info_ctx is None:
+        return None
+
+    async def on_event(n: int, event: Event) -> None:
+        if info_ctx is not None and event.operation:
+            await info_ctx.info(event.message)
+        if request_ctx is not None:
+            await request_ctx.report_progress(n, None, event.message)
+    return on_event
+
+
+async def run_as_job(op, name: str, reply: "Reply", kwargs: dict, sources: list, owner: str,
+                     info_ctx: Context | None):
+    jobs = get_jobs()
+
+    async def work(job: Job) -> OpResult:
+        return await execute(op, kwargs, sources, notify=job.say)
+
+    async def keep(job: Job, result: OpResult) -> KeptResult:
+        return await _keep_job_result(reply, job, result)
+
+    job = jobs.submit(owner, name, work, keep)
+    try:
+        done = await job.wait(jobs.settings.wait_sec, progress_forwarder(info_ctx))
+    except BaseException:
+        # The request itself was cancelled before the job was handed out: nobody can reach
+        # the job, so it must not run on (its engine is killed, as before jobs existed).
+        if job.task is not None and not job.task.done():
+            job.task.cancel()
+            job.task.add_done_callback(lambda _t: jobs.discard(job))
+        else:
+            jobs.discard(job)
+        raise
+    if not done:
+        jobs.detach(job)
+        return handle_reply(job, reply, jobs.settings.wait_sec)
+    jobs.discard(job)
+    return await finished_reply(job, reply)
+
+
 def _arg_params(model) -> list[inspect.Parameter]:
     params = []
     for name, info in model.model_fields.items():
@@ -337,6 +530,9 @@ def add_operation_tool(
     inputs_at    where they go among the operation's arguments (default: last);
     progress     add a `ctx: Context` parameter and send the operation's
                  messages as MCP log notifications.
+
+    An operation that takes a conversion slot runs as a job (see "Jobs" above): its
+    description gets JOB_HINT, and a call that outlives jobs.wait_sec answers with a job handle.
     """
     op = get_operation(name)
     args = _arg_params(op.args_model)
@@ -345,10 +541,22 @@ def add_operation_tool(
     if progress:
         params.append(inspect.Parameter("ctx", _KW, default=None, annotation=Context))
 
+    as_job = op.takes_slot
+    if as_job:
+        _REPLIES[name] = reply
+        # After the first paragraph: FastMCP drops everything from a docstring's first section
+        # header ("Args:", "Typical usage:") on, so a hint at the end would never be seen.
+        first, _, rest = inspect.cleandoc(description).partition("\n\n")
+        description = f"{first}\n\n{JOB_HINT}" + (f"\n\n{rest}" if rest else "")
+        if returns is not str:
+            returns = returns | str  # the job handle is plain text
+
     async def tool(**kwargs):
         ctx = kwargs.pop("ctx", None)
         owner = current_owner()
         sources = inputs.sources(kwargs, op.detect_input_format, owner) if inputs else []
+        if as_job:
+            return await run_as_job(op, name, reply, kwargs, sources, owner, ctx)
         try:
             result = await execute(op, kwargs, sources,
                                    notify=ctx.info if ctx is not None else None)

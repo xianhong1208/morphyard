@@ -14,13 +14,16 @@ Everything is in [`config/config.yaml`](../config/config.yaml) and reads environ
 | `ENGINE_TIMEOUT` | engine default | Seconds per engine call, applied to every engine. Unset keeps each engine's own limit: LibreOffice 180, Pandoc 120, OCR 300. |
 | `MORPHYARD_MAX_CONCURRENT_CONVERSIONS` | CPUs, at most 8 | Conversions running at once, all engines together. See [Concurrent conversions](#concurrent-conversions). |
 | `MORPHYARD_MAX_QUEUED_CONVERSIONS` | 4 × the limit | How many more wait for a slot; `0` refuses at once when every slot is taken. |
-| `MORPHYARD_QUEUE_TIMEOUT` | `30` | Seconds a request may wait for a slot before it is refused as busy. |
+| `MORPHYARD_QUEUE_TIMEOUT` | `30` | Seconds a request may wait for a slot before it is refused as busy. MCP tool calls run as jobs and are not bound by it (see [Jobs](#jobs)). |
 | `MORPHYARD_DATA_DIR` | `./data` | Stored files and the generated link-signing key. See [Stored files and download links](#stored-files-and-download-links). |
 | `MORPHYARD_PUBLIC_URL` | `MORPHYARD_BASE_URL` | Address download links point at. |
 | `MORPHYARD_SIGNING_KEY` | generated | Key that signs download links. |
 | `MORPHYARD_FILE_TTL_SEC` | `3600` | Seconds a stored file is kept (at most 86400). |
 | `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | Store caps: whole store, per person. |
 | `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | How tools return files. See [Delivery modes](#delivery-modes). |
+| `MORPHYARD_JOB_WAIT_SEC` | `20` | Seconds a call waits for its conversion before answering with a job id; also the longest `job_status` wait (at most 120). See [Jobs](#jobs). |
+| `MORPHYARD_MAX_JOBS_PER_OWNER` / `MORPHYARD_MAX_JOBS` | `5` / `64` | Jobs queued or running at once: per person, and on the server. |
+| `MORPHYARD_JOB_MAX_SEC` | `1800` | A job is stopped after this many seconds, its wait in the queue included. |
 | `LOG_LEVEL` | `INFO` | |
 
 In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:invoke` on every token, and `auth.audience` overrides the derived audience for the rare case where the registered resource URI is not `<base_url>/mcp`.
@@ -29,9 +32,39 @@ In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:i
 
 Each conversion takes one slot for its whole run (every hop of a multi-hop path included), whichever engine does the work: LibreOffice, Pandoc, Tesseract, Poppler or the built-in ones. There is one limit for all engines, not one each, because they all compete for the same CPU and memory and a request uses its engines one after another; a slot is at most one engine process at a time. `list_supported_conversions` and `inspect_document` take no slot.
 
-A request that finds every slot taken waits in a first-in, first-out queue. It is refused straight away when `MORPHYARD_MAX_QUEUED_CONVERSIONS` requests are already waiting, and after waiting `MORPHYARD_QUEUE_TIMEOUT` seconds. The refusal is an MCP tool error that says the server is busy, that nothing was started and to retry the same call after a few seconds (over HTTP it would be `503` with a `Retry-After` header). `GET /health` shows the current state under `conversions`: `running`, `queued` and the three limits.
+A request that finds every slot taken waits in a first-in, first-out queue. It is refused straight away when `MORPHYARD_MAX_QUEUED_CONVERSIONS` requests are already waiting. MCP tool calls run as [jobs](#jobs) and wait in the queue as long as they need (up to `MORPHYARD_JOB_MAX_SEC`); `MORPHYARD_QUEUE_TIMEOUT` applies only to other callers of the conversion service. The refusal is an MCP tool error that says the server is busy, that nothing was started and to retry the same call after a few seconds (over HTTP it would be `503` with a `Retry-After` header). `GET /health` shows the current state under `conversions`: `running`, `queued` and the three limits.
 
 The default limit is the number of CPUs the process may use, capped at 8 because LibreOffice and Tesseract need a few hundred MB each and memory usually runs out before CPUs do. Raise it on a large machine with memory to spare; lower it on a small one. Each waiting request holds its upload in memory (up to `MAX_INPUT_MB`), which is what the queue length bounds. The limit applies per server process: with several workers or replicas, each has its own.
+
+## Jobs
+
+Every tool that converts (all but `list_supported_conversions`, `inspect_document` and `pdf_metadata`) runs its work as a **job**. The call waits up to `MORPHYARD_JOB_WAIT_SEC` (20 s) for it:
+
+- **Done in time:** the reply is exactly the one the tool always gave, and no job is kept. Most conversions take a few seconds, so most hosts never see a job.
+- **Still running:** the reply is one text block with the job id and how to poll, for example
+  `Still working on convert_document (job_id j_…): running for 20.1 s. Call job_status with job_id "j_…" to get the result; …`.
+  The conversion keeps going on the server.
+
+Three tools reach a job:
+
+| Tool | What it does |
+|---|---|
+| `job_status(job_id, wait_sec=20)` | Waits until the job is done (at most `MORPHYARD_JOB_WAIT_SEC`) and returns what the original tool would have returned: the file(s) with their links under the [delivery mode](#delivery-modes), the text, or the same error. Still running → the same handle again. It can be called again after the job is done. |
+| `job_cancel(job_id)` | Stops a queued or running job: its engine processes (LibreOffice and the processes it starts, Pandoc, Tesseract, Poppler) are killed, its conversion slot goes to the next job in the queue, and nothing is kept. |
+| `job_list()` | Your jobs, newest first: id, tool, status (`queued`, `running`, `completed`, `failed`, `cancelled`), seconds, queue position, last progress message. |
+
+Why 20 s: clients give up on long calls (Claude Code moves a call to the background after about 120 s and then drops its progress; Cursor's remote calls fail after about 300 s), and a call that answers in 20 s stays under all of them. Progress is sent as MCP `notifications/progress` when the request carries a `_meta.progressToken` (queue position, start, the engine's steps), both on the original call and on `job_status`, but nothing depends on it: few clients show it.
+
+Rules:
+
+- **A job belongs to the person who started it** (the token's `sub`; without authentication everyone is the same person). Another person's job id gets the same "unknown job" answer as an id that never existed, from all three tools.
+- **Caps:** `MORPHYARD_MAX_JOBS_PER_OWNER` (5) jobs queued or running per person, `MORPHYARD_MAX_JOBS` (64) on the server; over either, the call is refused at once and nothing starts. With authentication off everyone shares the per-person cap. The conversion queue's own limit still applies: a job that would be number `MORPHYARD_MAX_QUEUED_CONVERSIONS` + 1 in line is refused as busy.
+- **Time limit:** a job is stopped after `MORPHYARD_JOB_MAX_SEC` (30 min), queue wait included.
+- **Kept for the file TTL:** a finished job is kept, with its result, as long as files are (`MORPHYARD_FILE_TTL_SEC`). A job that ends after its caller left keeps its result files in the [store](#stored-files-and-download-links) under every delivery mode, `inline` too (there is nowhere else to keep them); `job_status` then returns them as the mode says.
+- **Jobs live in memory.** A restart loses every job: running ones stop (their engines die with the server) and `job_status` answers "unknown" for all ids. Files already kept stay until they expire, and their links keep working. Run the tool again after a restart.
+- **A cancelled request:** if the MCP client cancels a call before it answered with a job id, the job is cancelled too (nobody holds its id). Once the id was handed out, only `job_cancel` stops it.
+
+`GET /health` shows `jobs`: active, queued, kept and the limits.
 
 ## Stored files and download links
 

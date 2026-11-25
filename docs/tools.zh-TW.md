@@ -25,6 +25,11 @@
 | `pdf_page_numbers` | 頁碼（`{page}`、`{total}`）、頁首與頁尾文字；位置、起始號碼、跳過第一頁、字級、邊距 | 檔案 |
 | `pdf_to_images` | 把頁面轉成 PNG、JPEG 或 WebP，每頁一張圖 | 檔案（單頁）或 ZIP |
 | `images_to_pdf` | 一張圖片、多頁 TIFF 或圖片 ZIP → 一個 PDF，每張圖一頁 | 檔案 |
+| `job_status` | 取得工具回覆時仍在執行的轉換結果（最多等 20 秒） | 與原工具相同 |
+| `job_cancel` | 停止排隊中或執行中的轉換 | 文字 |
+| `job_list` | 你的轉換：排隊中、執行中與最近完成的 | 文字 |
+
+**較久的轉換。** 每個會轉換的工具都在 20 秒內回覆：若到時還沒完成，回覆會給一個 `job_id`，轉換繼續進行；結果好了之後用 `job_status` 取得。見[工作](configuration.zh-TW.md#工作)。
 
 **PDF 頁面轉圖片。** `pdf_to_images` 以 Poppler 的 `pdftoppm` 繪製：`image_format` 為 `png`（預設）、`jpg` 或 `webp`；`dpi` 36–300（預設 150）；`pages` 如 `1-3,7`（空白 = 全部，每次最多 50 頁）；`quality` 1–95，用於 JPEG / WebP。某頁在指定 DPI 下會超過 2500 萬像素時，改用較低 DPI 繪製，並在回覆中說明。單頁回傳圖片本身；多頁回傳一個 ZIP（`<name>_p01.png`…），因為有些 client 會把圖片 resource 變成模型輸入，而 ZIP 對使用者是一次下載。全部圖片合計不得超過 50 MB。有開啟密碼的 PDF 會被拒絕（只有權限密碼的 PDF 可以繪製）。`convert_document` 從 PDF 轉成圖片格式時，會指引模型改用這個工具。
 

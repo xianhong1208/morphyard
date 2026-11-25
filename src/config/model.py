@@ -130,6 +130,25 @@ class FilesConfig(BaseModel):
         return v.strip().lower() if isinstance(v, str) else v
 
 
+class JobsConfig(BaseModel):
+    """Conversions as jobs (`jobs:`, issue #34).
+
+    A tool call waits up to `wait_sec` for its conversion; one that takes longer answers with
+    a job id, and `job_status` (which waits up to `wait_sec` per call too) returns the result.
+    Jobs live in memory: a restart loses them. A finished job is kept as long as files are
+    (`files.ttl_sec`).
+    """
+    # Wait inside a call before answering with a job id, and the longest job_status wait.
+    # Keep it below the clients' own timeouts (Claude Code backgrounds a call at ~120 s).
+    wait_sec: float = Field(20, gt=0, le=120)
+    # Jobs queued or running at once, per person (token `sub`; everyone without auth).
+    max_per_owner: int = Field(5, gt=0)
+    # Jobs queued or running at once on the whole server.
+    max_active: int = Field(64, gt=0)
+    # A job is stopped after this long, its wait in the queue included.
+    max_sec: float = Field(1800, gt=0)
+
+
 class AppConfig(BaseModel):
     """Application metadata."""
     name: str = "MyMCP"
@@ -196,6 +215,7 @@ class ConfigModel(BaseModel):
     app: AppConfig | None = None
     convert: ConvertConfig = ConvertConfig()
     files: FilesConfig = Field(default_factory=FilesConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
     modules: ModulesConfig
 
 
@@ -205,6 +225,7 @@ __all__ = [
     "ConfigModel",
     "ConvertConfig",
     "FilesConfig",
+    "JobsConfig",
     "LoggingConfig",
     "McpPromptsConfig",
     "McpResourcesConfig",

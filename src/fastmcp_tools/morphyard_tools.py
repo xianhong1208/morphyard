@@ -21,6 +21,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from src.domain.operations.convert_ops import fidelity_warning as _fidelity_warning
+from src.fastmcp_tools.job_tools import register_job_tools
 from src.fastmcp_tools.operation_tool import Reply, add_operation_tool, upload
 from src.fastmcp_tools.pdf_image_tools import register_pdf_image_tools
 from src.fastmcp_tools.pdf_page_tools import register_pdf_page_tools
@@ -118,5 +119,8 @@ def register_morphyard_tools(mcp: FastMCP):
 
     # PDF pages <-> images (1.3)
     register_pdf_image_tools(mcp)
+
+    # job_status, job_cancel, job_list (1.4): conversions that outlive their call
+    register_job_tools(mcp)
 
     logger.info("Morphyard MCP tools registered")
