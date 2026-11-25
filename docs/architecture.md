@@ -198,6 +198,15 @@ Every tool is backed by one `Operation` in `src/domain/operations/`, and the reg
 
 The MCP tools are built from it by `add_operation_tool()`: the tool's parameters are generated from `args_model`, with the input parameters (the `file_content` triple, or `pdf_merge`'s `files`) inserted where each tool has always had them; a call resolves the inputs, runs `execute()` and shapes the reply the way that tool always replied (`[summary, file, ...]`; plain text for the `pdf_secure` tools when there is no file; the report for report tools; a refusal as `[message]`, plain text or `{"error": message}`). `tests/test_tool_contract.py` compares the whole tool list, parameter order included, with `tests/fixtures/mcp_tools.json`.
 
+## Jobs
+
+`src/domain/jobs.py` (issue #34) runs every operation that takes a conversion slot as a job: a task of its own in a process-wide `JobRegistry`, owned by the caller's `sub`. `operation_tool.run_as_job()` submits it and waits up to `jobs.wait_sec`; a job that finishes in time goes through the same `Reply.success` as before and is discarded, so a quick call is unchanged. Otherwise the registry is told the caller left (`detach`), the tool answers with a handle, and when the job ends its result is kept (`KeptResult`: files in the store, text in memory) for `job_status`, which rebuilds the reply under the delivery mode. A failed job keeps its exception and `job_status` raises it again.
+
+- **Slots:** the job's task runs inside `limiter.waiting_as_job(job)`, so `conversion_slot()` waits without the queue timeout (`acquire(timeout=None)`) and tells the job when it starts waiting and when it gets its slot (`queued` / `running`, `position_of()` for the queue place). The queue's length limit still refuses at once.
+- **Progress:** each operation message (`OpCall.say`) and each queue/start step is an `Event` on the job; a waiting call (the original or `job_status`) passes new events on as `notifications/progress` (`Context.report_progress`, a no-op without a progressToken) and, for `convert_document`, as log messages as before.
+- **Cancel:** `task.cancel()`; `CliEngine._run_command` kills the engine's process group on cancellation, and the `async with conversion_slot()` releases the slot. Work in a thread (pikepdf, Pillow, pypdf) cannot be interrupted: it finishes in the background and its result is dropped.
+- **Limits:** per owner and in all at submission, `max_sec` with `asyncio.timeout` around the whole job; finished jobs are pruned lazily after `keep_sec` (the file TTL). In memory only: a restart loses jobs.
+
 ## Conversion planning
 
 `registry.plan_conversion(src, dst, prefer_fidelity)` is the decision core. It searches the route graph for paths of up to `MAX_HOPS = 3` engine invocations and ranks candidates by:
@@ -314,9 +323,9 @@ Non-PDF sources do know where an image belongs: in firecrawl's document model an
 
 Images under 2 KB (`MIN_IMAGE_BYTES`) are treated as decorative (rules, icons, textures) and skipped; extraction stops at 40 images (`MAX_IMAGES`) or 15 MB in total (`MAX_TOTAL_IMAGE_BYTES`).
 
-### One file per call, no `pdf_merge`
+### One injected file per call
 
-Hosts that inject uploaded files skip non-string parameters, so a `list[str]` of files can never be populated (see [artifact injection](#hosts-that-inject-uploaded-files-artifact-injection)). This is a structural constraint of the injection contract, not a design choice. The merge logic is implemented and tested (`pdfops.merge_pdfs`); a thin tool wrapper can be added once multi-file injection is available.
+Hosts that inject uploaded files skip non-string parameters, so a list of files can never be filled by injection (see [artifact injection](#hosts-that-inject-uploaded-files-artifact-injection)). `pdf_merge` (1.3) therefore takes its files as base64 items or `file_id`s the model passes itself; several injected uploads in one call are planned for 1.4 (#36).
 
 ### firecrawl-anydoc maturity
 

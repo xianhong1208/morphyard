@@ -17,13 +17,22 @@ with ServerBusyError instead of piling up memory (each waiting request holds its
 upload) or running into the client's own timeout.
 
 The limit is per server process: with several workers each has its own.
+
+Jobs (src/domain/jobs.py, issue #34) wait differently: a tool call runs as a job that the
+caller can leave and poll, so it waits in the same FIFO queue **without** the queue timeout
+(the job's own time limit bounds it). The full-queue refusal still applies, so a flood is
+refused when it arrives, not later. A job marks its task with `waiting_as_job(observer)`;
+the observer hears when the job starts waiting and when it gets its slot, and
+`position_of()` tells it where it stands in the queue.
 """
 
 import asyncio
 import math
 import os
 from collections import deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
+from typing import Protocol
 
 from src.domain.exceptions import DomainException
 from src.log import get_mcptools_logger
@@ -44,6 +53,31 @@ def default_max_concurrent() -> int:
     except (AttributeError, OSError):
         cpus = os.cpu_count() or 1
     return max(1, min(cpus, DEFAULT_MAX_CONCURRENT_CAP))
+
+
+class SlotObserver(Protocol):
+    """What a job hears from the limiter (all calls are synchronous)."""
+
+    def waiting(self, limiter: "ConversionLimiter", ticket: asyncio.Future) -> None: ...
+
+    def started(self) -> None: ...
+
+
+# Set for the task of a job: it waits for a slot without the queue timeout.
+_job_observer: ContextVar[SlotObserver | None] = ContextVar("morphyard_job_observer", default=None)
+
+
+@contextmanager
+def waiting_as_job(observer: SlotObserver):
+    """Within this block (and tasks it starts) conversions wait for a slot as a job does."""
+    token = _job_observer.set(observer)
+    try:
+        yield
+    finally:
+        _job_observer.reset(token)
+
+
+_DEFAULT = object()
 
 
 class ServerBusyError(DomainException):
@@ -89,11 +123,29 @@ class ConversionLimiter:
     def _retry_after(self) -> int:
         return max(1, math.ceil(self.queue_timeout_sec / 2))
 
-    async def acquire(self) -> None:
+    def position_of(self, ticket: asyncio.Future) -> int | None:
+        """1-based place of a waiting ticket in the queue; None once it has its slot."""
+        position = 0
+        for f in self._waiters:
+            if f.done():
+                continue
+            position += 1
+            if f is ticket:
+                return position
+        return None
+
+    async def acquire(self, timeout: float | None | object = _DEFAULT,
+                      observer: SlotObserver | None = None) -> None:
+        """Take a slot, waiting in line for at most `timeout` seconds (None = no limit;
+        the default is the queue timeout)."""
+        if timeout is _DEFAULT:
+            timeout = self.queue_timeout_sec
         # A free slot never coexists with waiters: release() hands it straight to
         # the longest waiter, so a newcomer cannot jump the queue.
         if self.active < self.max_concurrent:
             self.active += 1
+            if observer is not None:
+                observer.started()
             return
         if self.queued >= self.max_queued:
             logger.warning(f"[limiter] busy: {self.active} running, {self.queued} queued; refused")
@@ -103,8 +155,10 @@ class ConversionLimiter:
 
         fut = asyncio.get_running_loop().create_future()
         self._waiters.append(fut)
+        if observer is not None:
+            observer.waiting(self, fut)
         try:
-            async with asyncio.timeout(self.queue_timeout_sec):
+            async with asyncio.timeout(timeout):
                 await fut
         except BaseException as e:
             if fut.done() and not fut.cancelled():
@@ -123,6 +177,8 @@ class ConversionLimiter:
                     f"slot ({self.active} conversions running)", self._retry_after()) from None
             raise
         # A releasing conversion handed its slot straight to us (active unchanged).
+        if observer is not None:
+            observer.started()
 
     def release(self) -> None:
         while self._waiters:
@@ -134,7 +190,12 @@ class ConversionLimiter:
 
     @asynccontextmanager
     async def slot(self):
-        await self.acquire()
+        """One slot for the block. A job (see `waiting_as_job`) waits without the queue timeout."""
+        observer = _job_observer.get()
+        if observer is None:
+            await self.acquire()
+        else:
+            await self.acquire(timeout=None, observer=observer)
         try:
             yield
         finally:

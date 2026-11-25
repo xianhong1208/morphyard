@@ -102,7 +102,7 @@
   {
     "name": "convert_document",
     "title": "Convert Document",
-    "description": "Convert the uploaded file to the given format and return the converted file.\n\nSupports conversions between Office documents, PDF, Markdown, HTML,\nspreadsheets, presentations and images. The source format is detected\nautomatically from the file; no need to specify it.",
+    "description": "Convert the uploaded file to the given format and return the converted file.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nSupports conversions between Office documents, PDF, Markdown, HTML,\nspreadsheets, presentations and images. The source format is detected\nautomatically from the file; no need to specify it.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -183,7 +183,7 @@
   {
     "name": "extract_text",
     "title": "Extract Text",
-    "description": "Extract the document's text as Markdown and return it directly (no file).\n\nUse this when you need to *read* the user's uploaded document to answer\nquestions, summarize or analyze it, rather than convert_document: this\ntool returns text you can read directly.\n\nSupports PDF, Word, Excel, PowerPoint, HTML, CSV and images (OCR).",
+    "description": "Extract the document's text as Markdown and return it directly (no file).\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nUse this when you need to *read* the user's uploaded document to answer\nquestions, summarize or analyze it, rather than convert_document: this\ntool returns text you can read directly.\n\nSupports PDF, Word, Excel, PowerPoint, HTML, CSV and images (OCR).",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -264,7 +264,7 @@
   {
     "name": "pdf_extract_pages",
     "title": "Pdf Extract Pages",
-    "description": "Extract the given pages from a PDF into a new PDF.\n\nPage order matters: pages='3,1' produces a PDF with page 3 first and\npage 1 second, which can be used to reorder pages.",
+    "description": "Extract the given pages from a PDF into a new PDF.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nPage order matters: pages='3,1' produces a PDF with page 3 first and\npage 1 second, which can be used to reorder pages.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -335,7 +335,7 @@
   {
     "name": "pdf_split",
     "title": "Pdf Split",
-    "description": "Split a PDF into several files and return all of them.\n\nNote: a PDF with many pages produces many files. Check the page count\nwith inspect_document first and confirm the split with the user.",
+    "description": "Split a PDF into several files and return all of them.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nNote: a PDF with many pages produces many files. Check the page count\nwith inspect_document first and confirm the split with the user.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -404,7 +404,7 @@
   {
     "name": "pdf_rotate",
     "title": "Pdf Rotate",
-    "description": "Rotate the given pages of a PDF (commonly used to fix wrongly oriented scans).",
+    "description": "Rotate the given pages of a PDF (commonly used to fix wrongly oriented scans).\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -480,7 +480,7 @@
   {
     "name": "pdf_compress",
     "title": "Pdf Compress",
-    "description": "Make a PDF file smaller and return it, with the before/after sizes.\n\nText, vector graphics and fonts are never degraded; only images are\ndownsampled/re-encoded, and only at 'balanced' or 'small'. Scanned or\nphoto-heavy PDFs shrink the most; text-only PDFs shrink a little or not at\nall. If the result is not smaller, the original file is returned unchanged\nand the response says so; tell the user rather than offering it as a\nsmaller file. Password-protected PDFs must be unlocked first (pdf_unlock).",
+    "description": "Make a PDF file smaller and return it, with the before/after sizes.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nText, vector graphics and fonts are never degraded; only images are\ndownsampled/re-encoded, and only at 'balanced' or 'small'. Scanned or\nphoto-heavy PDFs shrink the most; text-only PDFs shrink a little or not at\nall. If the result is not smaller, the original file is returned unchanged\nand the response says so; tell the user rather than offering it as a\nsmaller file. Password-protected PDFs must be unlocked first (pdf_unlock).",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -559,7 +559,7 @@
   {
     "name": "pdf_protect",
     "title": "Pdf Protect",
-    "description": "Encrypt a PDF with AES-256: an open password, permission restrictions, or both.\n\n- \"Put a password on this PDF\" -> password only.\n- \"Anyone may read it but not print or copy\" -> owner_password plus\n  allow_print=false, allow_copy=false, no password.\n- Both -> password and owner_password (different) plus the allow_* flags.\n\nPermission restrictions are honoured by standard PDF readers; they are not\nDRM and a determined user with other tools can ignore them, so say so if\nthe user relies on them. An already encrypted PDF must be unlocked first.",
+    "description": "Encrypt a PDF with AES-256: an open password, permission restrictions, or both.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\n- \"Put a password on this PDF\" -> password only.\n- \"Anyone may read it but not print or copy\" -> owner_password plus\n  allow_print=false, allow_copy=false, no password.\n- Both -> password and owner_password (different) plus the allow_* flags.\n\nPermission restrictions are honoured by standard PDF readers; they are not\nDRM and a determined user with other tools can ignore them, so say so if\nthe user relies on them. An already encrypted PDF must be unlocked first.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -658,7 +658,7 @@
   {
     "name": "pdf_unlock",
     "title": "Pdf Unlock",
-    "description": "Remove the password and permission restrictions from a PDF, given its password.\n\nReturns an unencrypted copy. Only works with the correct password; there is\nno password recovery or guessing. A wrong password gives a plain error; do\nnot retry with guessed passwords, ask the user. If the file is not\nencrypted, nothing is returned but a note saying so.",
+    "description": "Remove the password and permission restrictions from a PDF, given its password.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nReturns an unencrypted copy. Only works with the correct password; there is\nno password recovery or guessing. A wrong password gives a plain error; do\nnot retry with guessed passwords, ask the user. If the file is not\nencrypted, nothing is returned but a note saying so.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -802,7 +802,7 @@
   {
     "name": "pdf_strip_metadata",
     "title": "Pdf Strip Metadata",
-    "description": "Return a copy of the PDF with its metadata removed.\n\nAlways removed: the document information dictionary (Title, Author,\nSubject, Keywords, Creator, Producer, dates), every XMP metadata stream\n(document, pages, images), application private data (PieceInfo), and the\nfile identifier is regenerated. Optional: annotation authors (on by\ndefault), JavaScript, attachments. Page content (text, images, comments'\ntext, form fields) is not changed, and author names written in the page\ntext itself are not detected. Use pdf_metadata first to see what is there.",
+    "description": "Return a copy of the PDF with its metadata removed.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nAlways removed: the document information dictionary (Title, Author,\nSubject, Keywords, Creator, Producer, dates), every XMP metadata stream\n(document, pages, images), application private data (PieceInfo), and the\nfile identifier is regenerated. Optional: annotation authors (on by\ndefault), JavaScript, attachments. Page content (text, images, comments'\ntext, form fields) is not changed, and author names written in the page\ntext itself are not detected. Use pdf_metadata first to see what is there.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -881,7 +881,7 @@
   {
     "name": "pdf_merge",
     "title": "Pdf Merge",
-    "description": "Merge several PDFs into one PDF, in the given order.\n\nPass every PDF yourself as base64 in `files`, or the file_id of a PDF an\nearlier Morphyard tool returned (this tool does not use the single\nfile_content upload slot of the other tools). If you only hold an upload\nreference and cannot pass the bytes, tell the user merging needs the files\nthemselves. Encrypted PDFs are refused: remove their password first.",
+    "description": "Merge several PDFs into one PDF, in the given order.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nPass every PDF yourself as base64 in `files`, or the file_id of a PDF an\nearlier Morphyard tool returned (this tool does not use the single\nfile_content upload slot of the other tools). If you only hold an upload\nreference and cannot pass the bytes, tell the user merging needs the files\nthemselves. Encrypted PDFs are refused: remove their password first.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -965,7 +965,7 @@
   {
     "name": "pdf_delete_pages",
     "title": "Pdf Delete Pages",
-    "description": "Delete pages from a PDF and return the PDF without them.\n\nBookmarks that pointed at a remaining page are kept. To keep only a few\npages, pdf_extract_pages may be simpler; to change the order, use\npdf_reorder_pages.",
+    "description": "Delete pages from a PDF and return the PDF without them.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nBookmarks that pointed at a remaining page are kept. To keep only a few\npages, pdf_extract_pages may be simpler; to change the order, use\npdf_reorder_pages.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1036,7 +1036,7 @@
   {
     "name": "pdf_reorder_pages",
     "title": "Pdf Reorder Pages",
-    "description": "Put the pages of a PDF in a new order (no page added or removed).\n\nEvery page must appear exactly once; a missing or repeated page is refused\nwith the page numbers named, so nothing is lost by accident. To also drop\npages, call pdf_delete_pages first (or pdf_extract_pages, which keeps a\nselection in the order given). Bookmarks follow their pages.",
+    "description": "Put the pages of a PDF in a new order (no page added or removed).\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nEvery page must appear exactly once; a missing or repeated page is refused\nwith the page numbers named, so nothing is lost by accident. To also drop\npages, call pdf_delete_pages first (or pdf_extract_pages, which keeps a\nselection in the order given). Bookmarks follow their pages.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1107,7 +1107,7 @@
   {
     "name": "pdf_watermark",
     "title": "Pdf Watermark",
-    "description": "Add a text or image watermark to a PDF, on every page or chosen pages.\n\nThe watermark is drawn over the page content, semi-transparent, upright as\nthe reader sees each page (also on landscape and rotated pages, and on\ndocuments that mix page sizes). Bookmarks, links and form fields are kept.",
+    "description": "Add a text or image watermark to a PDF, on every page or chosen pages.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nThe watermark is drawn over the page content, semi-transparent, upright as\nthe reader sees each page (also on landscape and rotated pages, and on\ndocuments that mix page sizes). Bookmarks, links and form fields are kept.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1235,7 +1235,7 @@
   {
     "name": "pdf_page_numbers",
     "title": "Pdf Page Numbers",
-    "description": "Add page numbers, a header and/or a footer to a PDF.\n\nText is placed upright as the reader sees each page, inside the margin,\non portrait, landscape and rotated pages alike, and is shrunk if it would\nnot fit the page's width. The page number and a header or footer cannot\nshare one spot (e.g. both bottom-center): move one, or put {page} into the\nfooter_text and set number_format to an empty string.",
+    "description": "Add page numbers, a header and/or a footer to a PDF.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nText is placed upright as the reader sees each page, inside the margin,\non portrait, landscape and rotated pages alike, and is shrunk if it would\nnot fit the page's width. The page number and a header or footer cannot\nshare one spot (e.g. both bottom-center): move one, or put {page} into the\nfooter_text and set number_format to an empty string.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1377,7 +1377,7 @@
   {
     "name": "pdf_to_images",
     "title": "Pdf To Images",
-    "description": "Render PDF pages as images, one image per page.\n\nOne page comes back as a single image file; several pages come back as\none ZIP containing one image per page, named <name>_p01.png,\n<name>_p02.png ... in the order requested. Use this when the user wants\na page as a picture (to share, embed in a slide, or post), a thumbnail,\nor a page for another image tool. To read a PDF's text, use\nextract_text instead.",
+    "description": "Render PDF pages as images, one image per page.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nOne page comes back as a single image file; several pages come back as\none ZIP containing one image per page, named <name>_p01.png,\n<name>_p02.png ... in the order requested. Use this when the user wants\na page as a picture (to share, embed in a slide, or post), a thumbnail,\nor a page for another image tool. To read a PDF's text, use\nextract_text instead.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1461,7 +1461,7 @@
   {
     "name": "images_to_pdf",
     "title": "Images To Pdf",
-    "description": "Combine images into one PDF, one image per page.\n\nThe uploaded file is either one image (PNG, JPEG, WebP, TIFF, GIF, BMP;\nevery page of a multi-page TIFF becomes a page, GIF / WebP animations\ngive their first frame) or a ZIP of images. Only one file can be passed\nper call, so for several images ask the user to put them in a ZIP: the\npages follow the file names in natural order (page2 before page10), and\nfiles that are not images are skipped and listed. Photos are turned\nupright from their EXIF orientation, transparency becomes white, and\nJPEGs are embedded unchanged (no quality loss).",
+    "description": "Combine images into one PDF, one image per page.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nThe uploaded file is either one image (PNG, JPEG, WebP, TIFF, GIF, BMP;\nevery page of a multi-page TIFF becomes a page, GIF / WebP animations\ngive their first frame) or a ZIP of images. Only one file can be passed\nper call, so for several images ask the user to put them in a ZIP: the\npages follow the file names in natural order (page2 before page10), and\nfiles that are not images are skipped and listed. Photos are turned\nupright from their EXIF orientation, transparency becomes white, and\nJPEGs are embedded unchanged (no quality loss).",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1537,6 +1537,76 @@
           "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
         }
       }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "job_status",
+    "title": "Job Status",
+    "description": "Get the result of a conversion that was still running when its tool answered.\n\nWhen a Morphyard tool replies that the work is still running and gives a job_id,\ncall this with that job_id. It waits for the job (up to wait_sec) and then returns\nexactly what the original tool would have returned: the converted file(s) with their\ndownload links, or the text. If the job is still running it says so again: call it\nagain with the same job_id. Results are kept for a limited time after the job ends.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "description": "The job_id a Morphyard tool returned, e.g. 'j_...'",
+          "type": "string"
+        },
+        "wait_sec": {
+          "default": 20,
+          "description": "How long to wait for the job to finish before answering, in seconds. The server caps it (20 s by default); it answers as soon as the job is done.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "job_id"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "job_cancel",
+    "title": "Job Cancel",
+    "description": "Stop a conversion that is still queued or running.\n\nUse it when the user no longer wants the result, or the job was started by mistake.\nThe conversion engine is stopped at once and nothing is kept. A job that has already\nfinished is left as it is.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "description": "The job_id a Morphyard tool returned, e.g. 'j_...'",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "job_list",
+    "title": "Job List",
+    "description": "List your conversion jobs: the ones still queued or running, and the finished ones\nwhose results are still kept.\n\nUse it to find a job_id you lost track of. Each entry gives the job_id, the tool,\nits status (queued, running, completed, failed or cancelled) and how long it has run.\nJobs are kept in memory: a server restart forgets them.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
     },
     "_meta": {
       "fastmcp": {

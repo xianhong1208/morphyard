@@ -25,6 +25,11 @@
 | `pdf_page_numbers` | Page numbers (`{page}`, `{total}`), header and footer text; position, start number, skip the first page, font size, margin | File |
 | `pdf_to_images` | Render pages as PNG, JPEG or WebP, one image per page | File (one page) or ZIP |
 | `images_to_pdf` | One image, a multi-page TIFF or a ZIP of images → one PDF, a page per image | File |
+| `job_status` | The result of a conversion that was still running when its tool answered (waits up to 20 s) | What the tool returns |
+| `job_cancel` | Stop a queued or running conversion | Text |
+| `job_list` | Your conversions: queued, running and recently finished | Text |
+
+**Long conversions.** Every tool that converts answers within 20 s: if the work is not done by then, the reply gives a `job_id` and the conversion goes on; `job_status` returns the result when it is ready. See [Jobs](configuration.md#jobs).
 
 **PDF pages to images.** `pdf_to_images` renders with Poppler's `pdftoppm`: `image_format` `png` (default), `jpg` or `webp`; `dpi` 36–300 (default 150); `pages` like `1-3,7` (empty = all, at most 50 per call); `quality` 1–95 for JPEG / WebP. A page that would exceed 25 megapixels at the requested DPI is rendered at a lower DPI, and the reply says so. One page comes back as the image; several come back as one ZIP (`<name>_p01.png`, …), because some clients turn image resources into model input and a ZIP is one download. The images together may not exceed 50 MB. Password-protected PDFs are refused (a PDF with only an owner password renders). `convert_document` from PDF to an image format points the model at this tool.
 

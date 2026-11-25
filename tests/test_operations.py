@@ -77,11 +77,17 @@ async def _tools() -> dict[str, dict]:
     mcp = FastMCP("ops-test")
     register_morphyard_tools(mcp)
     async with Client(mcp) as client:
-        return {t.name: t.inputSchema for t in await client.list_tools()}
+        return {t.name: t.inputSchema for t in await client.list_tools()
+                if t.name not in JOB_TOOLS}
+
+
+# The job tools reach jobs, not operations (issue #34).
+JOB_TOOLS = {"job_status", "job_cancel", "job_list"}
 
 
 def test_every_tool_has_exactly_one_operation():
-    """TC-OPS-002: the registry holds one operation per MCP tool, and nothing else."""
+    """TC-OPS-002: the registry holds one operation per MCP tool (the job tools aside),
+    and nothing else."""
     tools = asyncio.run(_tools())
     assert {op.name for op in list_operations()} == set(tools)
     assert len(list_operations()) == 19

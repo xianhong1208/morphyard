@@ -14,13 +14,16 @@
 | `ENGINE_TIMEOUT` | 各引擎預設 | 每次引擎呼叫的秒數上限，套用到所有引擎。未設定時各引擎維持自己的上限：LibreOffice 180、Pandoc 120、OCR 300。 |
 | `MORPHYARD_MAX_CONCURRENT_CONVERSIONS` | CPU 數，最多 8 | 同時執行的轉換數，所有引擎合計。見[同時轉換](#同時轉換)。 |
 | `MORPHYARD_MAX_QUEUED_CONVERSIONS` | 上限的 4 倍 | 最多還能有幾個請求排隊等空位；`0` 表示所有空位都被占用時立即拒絕。 |
-| `MORPHYARD_QUEUE_TIMEOUT` | `30` | 請求等待空位的秒數上限，超過即以「忙碌」拒絕。 |
+| `MORPHYARD_QUEUE_TIMEOUT` | `30` | 請求等待空位的秒數上限，超過即以「忙碌」拒絕。MCP 工具呼叫以工作執行，不受此限（見[工作](#工作)）。 |
 | `MORPHYARD_DATA_DIR` | `./data` | 暫存檔案與自動產生的連結簽章金鑰。見[暫存檔案與下載連結](#暫存檔案與下載連結)。 |
 | `MORPHYARD_PUBLIC_URL` | `MORPHYARD_BASE_URL` | 下載連結指向的位址。 |
 | `MORPHYARD_SIGNING_KEY` | 自動產生 | 簽署下載連結的金鑰。 |
 | `MORPHYARD_FILE_TTL_SEC` | `3600` | 檔案保留的秒數（最多 86400）。 |
 | `MORPHYARD_STORE_MAX_MB` / `MORPHYARD_STORE_OWNER_MAX_MB` | `2048` / `512` | 暫存上限：整體、每人。 |
 | `MORPHYARD_RESULT_DELIVERY` / `MORPHYARD_INLINE_MAX_MB` | `auto` / `10` | 工具回傳檔案的方式，見[回傳方式](#回傳方式)。 |
+| `MORPHYARD_JOB_WAIT_SEC` | `20` | 一次呼叫等待轉換完成的秒數，超過就改回傳工作 id；也是 `job_status` 最長的等待時間（最多 120）。見[工作](#工作)。 |
+| `MORPHYARD_MAX_JOBS_PER_OWNER` / `MORPHYARD_MAX_JOBS` | `5` / `64` | 同時排隊或執行中的工作數：每人、整台伺服器。 |
+| `MORPHYARD_JOB_MAX_SEC` | `1800` | 工作執行超過這麼多秒（含排隊時間）就停止。 |
 | `LOG_LEVEL` | `INFO` | |
 
 YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 scope（例如 `mcp:tools:invoke`）；`auth.audience` 則可在註冊的 resource URI 不是 `<base_url>/mcp` 的少數情況下覆寫推導值。
@@ -29,9 +32,39 @@ YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 s
 
 每個轉換在整個執行期間（多段路徑的每一段都算在內）占用一個空位，不論由哪個引擎處理：LibreOffice、Pandoc、Tesseract、Poppler 或內建引擎。所有引擎共用一個上限，而不是各自一個，因為它們都在搶同樣的 CPU 與記憶體，而且一個請求會依序使用它的引擎；一個空位同時最多只有一個引擎程序。`list_supported_conversions` 與 `inspect_document` 不占空位。
 
-請求遇到空位全滿時，會進入先進先出的佇列等待。若已有 `MORPHYARD_MAX_QUEUED_CONVERSIONS` 個請求在等，或等待超過 `MORPHYARD_QUEUE_TIMEOUT` 秒，就會被拒絕。拒絕是一個 MCP 工具錯誤，說明伺服器忙碌、尚未開始任何轉換，並請在幾秒後以相同參數重試（若經由 HTTP 則是 `503` 加上 `Retry-After` header）。`GET /health` 的 `conversions` 顯示目前狀態：`running`、`queued` 與三個上限。
+請求遇到空位全滿時，會進入先進先出的佇列等待。若已有 `MORPHYARD_MAX_QUEUED_CONVERSIONS` 個請求在等，就會立刻被拒絕。MCP 工具呼叫以[工作](#工作)執行，在佇列中需要等多久就等多久（最多 `MORPHYARD_JOB_MAX_SEC`）；`MORPHYARD_QUEUE_TIMEOUT` 只適用於轉換服務的其他呼叫者。拒絕是一個 MCP 工具錯誤，說明伺服器忙碌、尚未開始任何轉換，並請在幾秒後以相同參數重試（若經由 HTTP 則是 `503` 加上 `Retry-After` header）。`GET /health` 的 `conversions` 顯示目前狀態：`running`、`queued` 與三個上限。
 
 預設上限是此程序可用的 CPU 數，最多 8，因為 LibreOffice 與 Tesseract 每個都要數百 MB，記憶體通常比 CPU 先用完。記憶體充足的大機器可以調高，小機器則調低。每個排隊中的請求都把上傳的檔案留在記憶體中（最多 `MAX_INPUT_MB`），佇列長度限制的就是這部分。上限以伺服器程序為單位：有多個 worker 或副本時，各自有自己的上限。
+
+## 工作
+
+每個會轉換的工具（除了 `list_supported_conversions`、`inspect_document` 與 `pdf_metadata`）都以**工作**（job）執行。呼叫最多等待 `MORPHYARD_JOB_WAIT_SEC`（20 秒）：
+
+- **時間內完成：** 回覆和這個工具一向的回覆完全相同，也不留下任何工作紀錄。大多數轉換只要幾秒，因此大多數 host 根本不會看到工作。
+- **還在執行：** 回覆是一段文字，帶工作 id 與查詢方式，例如
+  `Still working on convert_document (job_id j_…): running for 20.1 s. Call job_status with job_id "j_…" to get the result; …`。
+  轉換會在伺服器上繼續進行。
+
+三個工具可以操作工作：
+
+| 工具 | 用途 |
+|---|---|
+| `job_status(job_id, wait_sec=20)` | 等到工作完成（最多 `MORPHYARD_JOB_WAIT_SEC`），回傳原本工具會回傳的內容：依[回傳方式](#回傳方式)給檔案與連結、文字，或同樣的錯誤。還在執行就再回一次同樣的說明。工作完成後可以重複呼叫。 |
+| `job_cancel(job_id)` | 停止排隊中或執行中的工作：結束它的引擎程序（LibreOffice 與它啟動的程序、Pandoc、Tesseract、Poppler），空位交給佇列中的下一個工作，不保留任何結果。 |
+| `job_list()` | 你的工作，新的在前：id、工具、狀態（`queued`、`running`、`completed`、`failed`、`cancelled`）、秒數、佇列位置、最後的進度訊息。 |
+
+為什麼是 20 秒：client 不會無限等待（Claude Code 約 120 秒後把呼叫移到背景，之後就丟掉進度；Cursor 的遠端呼叫約 300 秒後失敗），20 秒內回覆就不會碰到這些限制。請求帶有 `_meta.progressToken` 時，進度會以 MCP `notifications/progress` 送出（佇列位置、開始、引擎的步驟），原本的呼叫與 `job_status` 都會送，但沒有任何功能依賴它：很少 client 會顯示。
+
+規則：
+
+- **工作屬於啟動它的人**（token 的 `sub`；沒有驗證時所有人視為同一人）。別人的工作 id 在三個工具中得到的回答，都和不存在的 id 一樣是「未知的工作」。
+- **上限：** 每人同時最多 `MORPHYARD_MAX_JOBS_PER_OWNER`（5）個排隊或執行中的工作，整台伺服器 `MORPHYARD_MAX_JOBS`（64）個；超過任一個，呼叫會立刻被拒絕，不會開始任何轉換。沒有驗證時所有人共用每人上限。轉換佇列本身的上限依然有效：會排在第 `MORPHYARD_MAX_QUEUED_CONVERSIONS` + 1 位的工作會被拒絕（伺服器忙碌）。
+- **時間上限：** 工作執行 `MORPHYARD_JOB_MAX_SEC`（30 分鐘，含排隊）後停止。
+- **保留時間與檔案相同：** 完成的工作連同結果保留 `MORPHYARD_FILE_TTL_SEC`。呼叫者離開後才完成的工作，不論哪種回傳方式（包括 `inline`），結果檔案都放在[暫存區](#暫存檔案與下載連結)（沒有其他地方可放）；`job_status` 再依回傳方式回傳。
+- **工作只存在記憶體中。** 重新啟動會失去所有工作：執行中的會停止（引擎隨伺服器結束），所有 id 的 `job_status` 都回答「未知」。已保留的檔案會留到過期，連結照常可用。重新啟動後請再執行一次工具。
+- **請求被取消：** 若 MCP client 在拿到工作 id 之前就取消呼叫，工作也會一併取消（沒有人持有它的 id）。id 一旦交出，就只有 `job_cancel` 能停止它。
+
+`GET /health` 的 `jobs` 顯示執行中、排隊中、保留中的數量與上限。
 
 ## 暫存檔案與下載連結
 

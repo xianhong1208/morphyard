@@ -16,6 +16,7 @@ from src.auth import build_auth_provider, init_revocation, resolve_auth_settings
 from src.api.router.files import install_access_log_redaction
 from src.config.config_manager import Config
 from src.domain.files import files_lifespan, init_files
+from src.domain.jobs import jobs_lifespan, init_jobs
 from src.log import get_api_logger
 from src.middleware.request_id import RequestIdMiddleware
 from src.middleware.request_logging import RequestLogMiddleware
@@ -149,12 +150,15 @@ def create_app(config: BaseModel, transport: str):
     # --- Stored files + signed download links (raises on an unusable signing key) ---
     init_files(config, env_refs=Config.get_env_refs())
 
+    # --- Jobs: conversions that outlive their call (in memory) ---
+    init_jobs(config)
+
     @asynccontextmanager
     async def lifespan(app):
         await _sweep_stale_libreoffice_profiles()
         install_access_log_redaction()
         async with mcp_app.lifespan(app):
-            async with revocation_lifespan(), files_lifespan():
+            async with revocation_lifespan(), files_lifespan(), jobs_lifespan():
                 yield
 
     # --- FastAPI instance ---

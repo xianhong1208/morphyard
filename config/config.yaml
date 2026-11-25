@@ -47,8 +47,9 @@ convert:
   max_input_mb: ${MAX_INPUT_MB:-50}         # per-file limit
   engine_timeout_sec: ${ENGINE_TIMEOUT:-}    # seconds per engine call; empty = each engine's default (LibreOffice 180, Pandoc 120, OCR 300)
   max_hops: 3                               # longest multi-hop conversion path (overrides registry.MAX_HOPS)
-  # Conversions beyond the limit wait in a first-in, first-out queue; when it is full, or a request
-  # has waited queue_timeout_sec, it is refused as busy (MCP tool error; HTTP 503 + Retry-After).
+  # Conversions beyond the limit wait in a first-in, first-out queue; when it is full, a new one is
+  # refused as busy (MCP tool error). Tool calls run as jobs and wait in the queue without
+  # queue_timeout_sec (jobs.max_sec bounds them); the timeout applies to other callers only.
   max_concurrent_conversions: ${MORPHYARD_MAX_CONCURRENT_CONVERSIONS:-}   # empty = CPUs available, at most 8
   max_queued_conversions: ${MORPHYARD_MAX_QUEUED_CONVERSIONS:-}           # empty = 4 x the limit; 0 = no queue
   queue_timeout_sec: ${MORPHYARD_QUEUE_TIMEOUT:-30}                       # longest wait for a slot, seconds
@@ -67,6 +68,15 @@ files:
   sweep_interval_sec: 60                                   # expired files are deleted this often and at startup
   result_delivery: "${MORPHYARD_RESULT_DELIVERY:-auto}"    # auto | inline | both | link
   inline_max_mb: ${MORPHYARD_INLINE_MAX_MB:-10}            # auto: files up to this size also come back as base64
+
+# Conversions run as jobs: a call waits up to wait_sec, then answers with a job id that
+# job_status / job_cancel / job_list reach. Jobs are kept in memory (a restart loses them; files
+# already kept stay until they expire). A finished job is kept as long as its files (ttl_sec).
+jobs:
+  wait_sec: ${MORPHYARD_JOB_WAIT_SEC:-20}                 # wait in a call (and per job_status) before answering, at most 120
+  max_per_owner: ${MORPHYARD_MAX_JOBS_PER_OWNER:-5}       # jobs queued or running at once per person (everyone, without auth)
+  max_active: ${MORPHYARD_MAX_JOBS:-64}                   # jobs queued or running at once on the server
+  max_sec: ${MORPHYARD_JOB_MAX_SEC:-1800}                 # a job is stopped after this long, queue wait included
 
 modules:
   enabled:

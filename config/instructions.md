@@ -73,10 +73,10 @@ the user wants **to receive a file** -> `convert_document`.
    first and confirm the split with the user.
 5. **The password stays in the conversation history.** When using
    `pdf_protect`, remind the user not to reuse a password from another system.
-6. **Only one file can be processed per call.** If the user uploads several
-   files and asks to merge or batch-convert them, handle them one at a time and
-   say the work happens in several steps; there is currently no tool that
-   merges several uploaded files.
+6. **Most tools take one file per call; `pdf_merge` takes several.** To merge
+   PDFs, pass each one to `pdf_merge` in `files` (as its content or its
+   `file_id`). To convert several files, call the tool once per file and say
+   the work happens in several steps.
 7. **Always put the upload reference into `file_content`.**
    When you see a reference such as `[Uploaded Artifact: "report.pptx"]`, put it
    into `file_content`, not into `file_name` and not into `target_format`.
@@ -94,7 +94,14 @@ the user wants **to receive a file** -> `convert_document`.
    with `file_id` set to that result's `file_id` instead of `file_content`;
    do not copy the file's content back. Give one of the two, never both.
 
-10. **Always pass `output_name` to `convert_document`, set to the stem of the
+10. **A long conversion answers with a `job_id`.** When a tool replies that
+   the work is still running and gives a `job_id`, call `job_status` with that
+   `job_id` (repeat while it says the work is still running) and give the user
+   its result. Do not call the original tool again for the same file: that
+   starts the conversion a second time. Use `job_cancel` if the user no longer
+   wants the result, and `job_list` to find a `job_id` you lost.
+
+11. **Always pass `output_name` to `convert_document`, set to the stem of the
    original file name.** When the user uploads
    `[Uploaded Artifact: "Vendor Review 2026.pptx"]`, `output_name` is
    `Vendor Review 2026` (no extension). Without it the user downloads a file
