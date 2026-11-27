@@ -36,13 +36,14 @@ or fetch URLs a document links to, and never run macros.
 
 **1.3.0 (2026-11-22), PDF toolkit.** Merge PDFs; add a text or image watermark; delete and reorder pages; compress; add page numbers, a header and a footer; unlock a PDF and set its permissions; read or strip metadata; turn PDF pages into images and images into a PDF. Nineteen MCP tools in all.
 
+**1.4.0 (2026-11-27), bigger jobs.** Results come back as download links that expire after an hour, with a `file_id` any tool takes as input, so big files no longer flood the model's context (results up to 10 MB still come inline too). Conversions over 20 s run as jobs with progress and can be cancelled. Files can be given by URL, with a guard that refuses internal addresses. Several files in one call, including for hosts that inject one upload per call (`store_file`). A `pipeline` tool chains steps on the server, e.g. merge, then compress, then watermark. Twenty-five MCP tools in all.
+
 See [CHANGELOG.md](CHANGELOG.md) for the details.
 
 ## Next
 
 | Version | What you get |
 |---|---|
-| **1.4: bigger jobs** | Results come back as **download links** that expire, instead of large base64 in the reply, so big files no longer flood the model's context. Long conversions run as **jobs with progress**. Files can be given **by URL**, with a guard that refuses internal addresses. **Several files in one call.** A **pipeline** tool chains steps, e.g. merge, then compress, then watermark. |
 | **1.5: web app** | A **page for every tool** in the browser: drop files, pick options, download the result. **Sign-in through MCP Gate**, which can be switched off for use on a trusted LAN. In **English and Traditional Chinese**. |
 | **1.6: what agents ask for most** | **Searchable PDFs** from scans (OCR text layer). **Tables in a PDF to XLSX or CSV.** **Fill in and flatten PDF forms.** **HEIC and AVIF** images, and image **resize, compress and EXIF removal**. **Sanitise** a document (scripts, embedded files, links). **Repair** a damaged PDF. |
 | **1.7: audio and video** | **Convert and compress** audio and video, **trim** them, **extract the audio** from a video, make a **GIF** from a clip, and convert **subtitles** between SRT, VTT and ASS. |
