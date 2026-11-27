@@ -452,8 +452,9 @@ def _add_image(collected: _Collected, label: str, blob: bytes, src: str,
         if from_zip:
             collected.skipped.append(label)
             return
+        what = "this file" if label == "image" else f"'{label}'"
         raise _pdf_error(
-            src, "this file is not an image this tool can read (PNG, JPEG, WebP, TIFF, "
+            src, f"{what} is not an image this tool can read (PNG, JPEG, WebP, TIFF, "
                  "GIF, BMP, or a ZIP of them)",
         )
     except Image.DecompressionBombError:
@@ -524,10 +525,20 @@ def _too_many_pages() -> str:
             f"over several calls")
 
 
-def collect_images(data: bytes, src: str = "image") -> _Collected:
-    """Read one image, a multi-page TIFF, or a ZIP of images into pages"""
+def collect_images(data: bytes | list[tuple[str, bytes]], src: str = "image") -> _Collected:
+    """Read one image, a multi-page TIFF, a ZIP of images, or a list of (label, image) into
+    pages. In a list every item must be an image (a ZIP is refused, naming the item): one
+    call never unpacks several archives."""
     collected = _Collected()
-    if data.startswith(_ZIP_MAGIC):
+    if isinstance(data, list):
+        for label, blob in data:
+            if blob.startswith(_ZIP_MAGIC):
+                raise _pdf_error(
+                    src, f"'{label}' is a ZIP; pass the images themselves when giving several "
+                         f"files, or the ZIP alone",
+                )
+            _add_image(collected, label, blob, src, from_zip=False)
+    elif data.startswith(_ZIP_MAGIC):
         for name, blob in _zip_members(data, src):
             _add_image(collected, name, blob, src, from_zip=True)
         if not collected.pictures:
@@ -678,7 +689,8 @@ def validate_layout(page_size: str, orientation: str, margin_mm: float | None,
     return page_size, orientation, margin_mm
 
 
-def build_pdf_sync(data: bytes, page_size: str = "fit", orientation: str = "auto",
+def build_pdf_sync(data: bytes | list[tuple[str, bytes]], page_size: str = "fit",
+                   orientation: str = "auto",
                    margin_mm: float | None = None, src: str = "image") -> BuiltPdf:
     page_size, orientation, margin_mm = validate_layout(page_size, orientation, margin_mm, src)
     margin_pt = margin_mm / 25.4 * 72
@@ -701,7 +713,8 @@ def build_pdf_sync(data: bytes, page_size: str = "fit", orientation: str = "auto
     )
 
 
-async def build_pdf(data: bytes, page_size: str = "fit", orientation: str = "auto",
+async def build_pdf(data: bytes | list[tuple[str, bytes]], page_size: str = "fit",
+                    orientation: str = "auto",
                     margin_mm: float | None = None, src: str = "image") -> BuiltPdf:
     result = await asyncio.to_thread(build_pdf_sync, data, page_size, orientation,
                                      margin_mm, src)

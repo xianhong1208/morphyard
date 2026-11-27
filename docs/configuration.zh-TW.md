@@ -151,6 +151,42 @@ await client.call_tool("convert_document", {"url": "https://example.org/report.d
 
 伺服器在區網時，可以用 `MORPHYARD_URL_ALLOW` 開放指定主機：`MORPHYARD_URL_ALLOW=192.168.1.0/24,nas.lan` 允許連到這個網段以及名為 `nas.lan` 的主機（名稱須完全相符，解析出的位址不限）。開放的只有「必須是公開位址」這一條：scheme、帳密、轉址、大小與時間的限制照樣適用，`0.0.0.0` 與多播也永遠不會連。`MORPHYARD_URL_DENY` 的寫法相同，列出的一律拒絕，公開位址也一樣；拒絕優先於允許。允許 `127.0.0.0/8` 等於讓網址能連到 Morphyard 所在機器上的服務，請先想清楚再開。proxy 會讓位址檢查失效，所以不論 `HTTP_PROXY` 怎麼設都不使用 proxy。
 
+## 一次呼叫多個檔案與上傳
+
+`pdf_merge`（2–20 個 PDF）與 `images_to_pdf`（1–20 張圖片，每張一頁）接收 `files`，清單中每個項目是一個檔案：
+
+- `{"file_id": "f_…"}`：留在伺服器上的檔案（工具的結果、用 `store_file` 存下的檔案，或用 `create_upload` 上傳的檔案），或
+- `{"file_content": "<base64>", "file_name": "a.pdf"}`：檔案本身，或
+- `{"url": "https://…"}`：由 Morphyard 下載的檔案（見[網址輸入](#網址輸入)）。
+
+每個項目只能給其中一種。有問題的項目會在讀取任何檔案之前就被拒絕，每個錯誤都會指出是哪一個項目（`File #2 in files (b.pdf): …`）。一次呼叫的檔案合計最多 200 MB；每個檔案仍受 50 MB 的輸入上限限制。`images_to_pdf` 也仍可改用 `file_content` / `file_id` 接收單張圖片或圖片 ZIP。
+
+要把多個檔案放上伺服器、又不讓模型搬運 base64，有兩種方式：
+
+**`store_file`：給每次呼叫只注入一個上傳檔的 host。** 很多 host 會把上傳的檔案放進工具的 `file_content` 參數，每次呼叫只放一個，所以模型無法在一次呼叫中把三個上傳檔交給 `pdf_merge`。`store_file` 透過同樣的 `file_content` / `file_name` / `mime_type` 參數接收一個檔案，原封不動保存，並回傳它的 `file_id`。模型對每個上傳檔各呼叫一次，再用所有 `file_id` 呼叫一次：
+
+```text
+store_file(file_content="[Uploaded Artifact: \"a.pdf\"]")  -> file_id f_A…
+store_file(file_content="[Uploaded Artifact: \"b.pdf\"]")  -> file_id f_B…
+pdf_merge(files=[{"file_id": "f_A…"}, {"file_id": "f_B…"}])
+```
+
+**`create_upload`：給能送 HTTP 請求的 client。** `create_upload(file_name, size_bytes?)` 會回傳一個 `file_id` 與一個有簽章的上傳網址：
+
+```bash
+curl -T scan.pdf 'https://morphyard.example/uploads/f_…?exp=…&max=…&sig=…'
+# 201 {"file_id": "f_…", "name": "scan.pdf", "size": 48213, "sha256": "…", "expires_at": …}
+```
+
+- 這個網址在 15 分鐘內接受一次 `PUT`，內容是檔案的原始位元組（一般或 chunked 傳輸皆可），之後 `file_id` 就能當作輸入。網址只能用一次：上傳成功後再 `PUT` 會得到 409。被拒絕或中斷的上傳不會留下任何東西，網址在到期前可以再試。
+- 網址本身就是唯一的憑證，和下載連結一樣：拿到網址的人就能送檔案。檔案一律屬於建立網址的那個人；其他人無法使用它的 `file_id`。
+- 上限是 `size_bytes`（有給的話）或 50 MB 的輸入上限。上限會先比對 `Content-Length`，讀取內容時再檢查一次，所以錯誤的 `Content-Length` 或 chunked 傳輸都無法繞過（413）。
+- 上傳檔計入擁有者在暫存區的額度：放不下網址的上限時，`PUT` 會在讀取內容前得到 507 `storage_full`（若等較舊的檔案過期就有空間，會附 `Retry-After`）。
+- 被竄改、已過期或不存在的網址都得到同樣的 404。查詢字串（簽章）不會出現在日誌裡。
+- 尚未完成的上傳只存在記憶體中：重新啟動後就會遺失，網址會得到 404。上傳內容先寫到 `<MORPHYARD_DATA_DIR>/uploads/`，請求結束時刪除，啟動時也會清空。
+
+兩種方式存下的檔案都和結果一樣保留（`MORPHYARD_FILE_TTL_SEC`），也計入相同的上限。
+
 ## Token 撤銷
 
 Morphyard 以離線方式驗證 MCP Gate 的 token，因此預設情況下，在 MCP Gate 撤銷的 token 在這裡會一直有效到過期為止——而 personal access token 最長可活一年。開啟 **revocation feed** 後，Morphyard 會在背景輪詢 MCP Gate 的 `POST /oauth/revoked`（每 `poll_interval_sec` 秒，帶 jitter 與錯誤退避），在記憶體保存「已撤銷但尚未過期」的 `jti`，並對 `/mcp` 上的這些 token 回應 401 `invalid_token`。撤銷約在一個輪詢間隔內生效。

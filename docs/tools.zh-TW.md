@@ -18,26 +18,28 @@
 | `pdf_compress` | 縮小 PDF（`lossless` / `balanced` / `small`） | 檔案 |
 | `pdf_metadata` | Info、XMP、版本、頁數、加密、腳本、附件 | 文字 |
 | `pdf_strip_metadata` | 移除中繼資料（可選擇一併移除腳本／附件） | 檔案 |
-| `pdf_merge` | 依序合併 2–20 個 PDF，每個檔案一個書籤 | 檔案 |
+| `pdf_merge` | 依序合併 2–20 個 PDF（`files`），每個檔案一個書籤 | 檔案 |
 | `pdf_delete_pages` | 刪除指定頁面 | 檔案 |
 | `pdf_reorder_pages` | 把所有頁面排成新順序（`3,1,2,4-10`、`10-1`、`reverse`） | 檔案 |
 | `pdf_watermark` | 文字或圖片（PNG/JPEG）浮水印：置中、對角線或平鋪；透明度、顏色、角度；全部或指定頁面 | 檔案 |
 | `pdf_page_numbers` | 頁碼（`{page}`、`{total}`）、頁首與頁尾文字；位置、起始號碼、跳過第一頁、字級、邊距 | 檔案 |
 | `pdf_to_images` | 把頁面轉成 PNG、JPEG 或 WebP，每頁一張圖 | 檔案（單頁）或 ZIP |
-| `images_to_pdf` | 一張圖片、多頁 TIFF 或圖片 ZIP → 一個 PDF，每張圖一頁 | 檔案 |
+| `images_to_pdf` | 多張圖片（`files`）、一張圖片、多頁 TIFF 或圖片 ZIP → 一個 PDF，每張圖一頁 | 檔案 |
 | `job_status` | 取得工具回覆時仍在執行的轉換結果（最多等 20 秒） | 與原工具相同 |
 | `job_cancel` | 停止排隊中或執行中的轉換 | 文字 |
 | `job_list` | 你的轉換：排隊中、執行中與最近完成的 | 文字 |
+| `store_file` | 把一個（注入的）檔案原封不動存在伺服器上，取得它的 `file_id` | 文字 |
+| `create_upload` | 一個有簽章、只能用一次的上傳網址（以 `PUT` 送一個檔案），以及檔案將有的 `file_id` | 文字 |
 
 **較久的轉換。** 每個會轉換的工具都在 20 秒內回覆：若到時還沒完成，回覆會給一個 `job_id`，轉換繼續進行；結果好了之後用 `job_status` 取得。見[工作](configuration.zh-TW.md#工作)。
 
 **PDF 頁面轉圖片。** `pdf_to_images` 以 Poppler 的 `pdftoppm` 繪製：`image_format` 為 `png`（預設）、`jpg` 或 `webp`；`dpi` 36–300（預設 150）；`pages` 如 `1-3,7`（空白 = 全部，每次最多 50 頁）；`quality` 1–95，用於 JPEG / WebP。某頁在指定 DPI 下會超過 2500 萬像素時，改用較低 DPI 繪製，並在回覆中說明。單頁回傳圖片本身；多頁回傳一個 ZIP（`<name>_p01.png`…），因為有些 client 會把圖片 resource 變成模型輸入，而 ZIP 對使用者是一次下載。全部圖片合計不得超過 50 MB。有開啟密碼的 PDF 會被拒絕（只有權限密碼的 PDF 可以繪製）。`convert_document` 從 PDF 轉成圖片格式時，會指引模型改用這個工具。
 
-**圖片轉 PDF。** `images_to_pdf` 接收一個檔案：一張圖片（PNG、JPEG、WebP、TIFF、GIF、BMP）、多頁 TIFF 的每一頁、GIF / WebP 動畫的第一格，或一個圖片 ZIP，頁序依檔名的自然順序（`page2` 在 `page10` 之前；非圖片檔、`__MACOSX/` 與隱藏檔會略過並列出）。`page_size` 為 `fit`（預設，每頁等於圖片大小，依檔案記錄的解析度，沒有則以 96 DPI 計）、`a4` 或 `letter`（圖片縮放到邊界內並置中）；`orientation` 為 `auto`（寬圖用橫向）、`portrait` 或 `landscape`；`margin_mm` 0–50（`fit` 預設 0，其他預設 10）。會套用 EXIF 方向；JPEG（以及相機 MPO 檔的主圖）逐位元組原樣嵌入，方向由頁面上的擺放方式處理；其他圖片以無損方式儲存；透明處變成白色；相符的 ICC 設定檔會保留。上限：100 頁、單張 5000 萬像素、合計 4 億像素、ZIP 500 個項目、解壓後 200 MB、輸出 100 MB。HEIC / AVIF 尚不支援（1.6）。`convert_document` 把單張圖片轉成 `pdf` 時使用同一套程式，頁面為 `fit`；先前它會對圖片做 OCR，回傳一個只有文字的 PDF。
+**圖片轉 PDF。** `images_to_pdf` 可在 `files` 接收多張圖片（每張一頁，依給定的順序；每個項目是 `file_id` 或 base64，其中有 PDF 或 ZIP 會被拒絕），或接收一個檔案：一張圖片（PNG、JPEG、WebP、TIFF、GIF、BMP）、多頁 TIFF 的每一頁、GIF / WebP 動畫的第一格，或一個圖片 ZIP，頁序依檔名的自然順序（`page2` 在 `page10` 之前；非圖片檔、`__MACOSX/` 與隱藏檔會略過並列出）。`page_size` 為 `fit`（預設，每頁等於圖片大小，依檔案記錄的解析度，沒有則以 96 DPI 計）、`a4` 或 `letter`（圖片縮放到邊界內並置中）；`orientation` 為 `auto`（寬圖用橫向）、`portrait` 或 `landscape`；`margin_mm` 0–50（`fit` 預設 0，其他預設 10）。會套用 EXIF 方向；JPEG（以及相機 MPO 檔的主圖）逐位元組原樣嵌入，方向由頁面上的擺放方式處理；其他圖片以無損方式儲存；透明處變成白色；相符的 ICC 設定檔會保留。上限：100 頁、單張 5000 萬像素、合計 4 億像素、ZIP 500 個項目、解壓後 200 MB、輸出 100 MB。HEIC / AVIF 尚不支援（1.6）。`convert_document` 把單張圖片轉成 `pdf` 時使用同一套程式，頁面為 `fit`；先前它會對圖片做 OCR，回傳一個只有文字的 PDF。
 
 ### PDF 頁面工具
 
-- **輸入。** `pdf_merge` 接收 `files`：一個 `{file_content, file_name}`（base64）、`{file_id}`（先前的結果）或 `{url}`（由 Morphyard 下載，只限公開位址）的清單，因為 host 的上傳注入每次呼叫只填一個 `file_content`，所以由呼叫端自己傳入檔案內容。其他頁面工具使用一般的三個參數；`pdf_watermark` 的圖片以 base64 放在 `watermark_image`。
+- **輸入。** `pdf_merge` 接收 `files`：一個 `{file_id}`（留在伺服器上的檔案）、`{file_content, file_name}`（base64）或 `{url}`（由 Morphyard 下載，只限公開位址）的清單。host 的上傳注入每次呼叫只填一個 `file_content`，所以先用 `store_file` 逐一存下上傳檔，再以 `file_id` 交給它（見[一次呼叫多個檔案](configuration.zh-TW.md#一次呼叫多個檔案與上傳)）。其他頁面工具使用一般的三個參數；`pdf_watermark` 的圖片以 base64 放在 `watermark_image`。
 - **頁面。** 頁面選擇與 `pdf_extract_pages` 相同，從 1 起算（`1-3,7,10-`）。`pdf_reorder_pages` 要求每頁剛好出現一次，並指出缺少或重複的頁碼；要拿掉頁面請用 `pdf_delete_pages`。
 - **保留。** 合併時，每個檔案原有的書籤會放在以該檔名命名的書籤底下。刪除與重排會保留指向仍存在頁面的書籤，並指到新位置。浮水印與頁碼會保留書籤、連結、表單欄位與中繼資料。
 - **位置。** 浮水印、頁碼、頁首與頁尾都畫在讀者看到的頁面上（crop box，再依頁面旋轉轉正），所以橫向、旋轉過的頁面與大小不一的文件上都是正的。單一浮水印或頁首太長時會縮小到放得下。
@@ -91,7 +93,7 @@ client ──(bearer token)──▶ /mcp ──▶ tools ──▶ service.py �
 
 ## 已知限制
 
-- 一次呼叫只處理一個檔案，`pdf_merge` 除外：它以清單接收 base64 檔案或 `file_id`（只能注入一個上傳檔的 host 目前還無法用 base64 餵它；一次呼叫多個上傳檔排在 1.4）。多張圖片請用 ZIP 交給 `images_to_pdf`。多步驟的工作（先轉檔、再加浮水印、再壓縮）用 `file_id` 把每一步的結果交給下一步，檔案不必再經過模型。
+- 一次呼叫只處理一個檔案，`pdf_merge` 與 `images_to_pdf` 除外：它們在 `files` 一次接收最多 20 個檔案（合計 200 MB）。每次呼叫只能注入一個上傳檔的 host，先用 `store_file` 逐一存下，再交出 `file_id`。其他工具處理多個檔案時一次呼叫一個。多步驟的工作（先轉檔、再加浮水印、再壓縮）用 `file_id` 把每一步的結果交給下一步，檔案不必再經過模型。
 - 單檔 50 MB，每次 OCR 最多 30 頁。
 - 同時執行的轉換數有上限（預設為 CPU 數，最多 8）；其餘排隊等待，超過佇列長度或等待時間時，工具會回答「伺服器忙碌」，稍後再呼叫即可。見[同時轉換](configuration.zh-TW.md#同時轉換)。
 - PDF → 可編輯格式一定有損；PDF 內的表格以啟發式方式還原。

@@ -573,3 +573,25 @@ def test_request_argument_logging_cuts_urls_to_their_host():
     assert "SECRET" not in out and "pw" not in out and "/a/b.pdf" not in out
     assert "https://files.test:8443/…" in out and "http://h.test/…" in out
     assert "f_1" in out and "keep" in out and args["url"].endswith("SECRET")
+
+
+async def test_images_to_pdf_files_take_a_url(local_allowed):
+    """TC-URL-035: images_to_pdf `files` items accept `url`; `files` together with the
+    single-file `url` is refused, and an item giving two sources is refused naming them."""
+    import io  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), "red").save(buf, format="PNG")
+    png = buf.getvalue()
+    async with Server(static(png, headers={"Content-Type": "image/png"})) as srv:
+        link = f"http://127.0.0.1:{srv.port}/a.png"
+        res = await _call("images_to_pdf", {"files": [
+            {"url": link},
+            {"file_content": base64.b64encode(png).decode(), "file_name": "b.png"}]})
+        assert not res.is_error, res.content
+        assert "2-page PDF" in res.content[0].text and "a.png" in res.content[0].text
+        both = await _call("images_to_pdf", {"files": [{"url": link}], "url": link})
+        assert both.is_error and "not both" in both.content[0].text
+        two = await _call("images_to_pdf", {"files": [{"url": link, "file_id": "f_x"}]})
+        assert two.is_error and "gives both file_id and url" in two.content[0].text

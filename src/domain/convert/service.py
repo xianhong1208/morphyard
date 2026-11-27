@@ -230,15 +230,7 @@ def resolve_artifact_input(
         # the file content) into file_content. A generic "unrecognized format"
         # message sends it guessing at names and formats in a retry loop; naming
         # the exact mistake is what gets it to the right next step.
-        raise UnsupportedFormatError(
-            f"file_content looks like a file name ({file_content.strip()[:60]!r}) "
-            "rather than file content. This parameter must hold the file itself: "
-            "for an uploaded file, pass the upload reference (of the form "
-            "[Uploaded Artifact: \"...\"]) and the host will substitute the content; "
-            "if you are holding text (e.g. Markdown produced by a previous step), "
-            "paste the **complete content** here.",
-            file_name=file_name,
-        )
+        raise _file_name_in_content(file_content, file_name)
 
     if not fmt and was_plain_text:
         # Plain text has no magic bytes; look at syntactic cues instead.
@@ -261,6 +253,37 @@ def resolve_artifact_input(
         f"Artifact resolved: file_name={file_name!r} → format={fmt}, {size_mb:.2f} MB"
     )
     return SourceFile(data=raw, fmt=fmt, name=stem_of(file_name))
+
+
+def _file_name_in_content(file_content: str, file_name: str | None) -> UnsupportedFormatError:
+    return UnsupportedFormatError(
+        f"file_content looks like a file name ({file_content.strip()[:60]!r}) "
+        "rather than file content. This parameter must hold the file itself: "
+        "for an uploaded file, pass the upload reference (of the form "
+        "[Uploaded Artifact: \"...\"]) and the host will substitute the content; "
+        "if you are holding text (e.g. Markdown produced by a previous step), "
+        "paste the **complete content** here.",
+        file_name=file_name,
+    )
+
+
+def decode_upload_to_store(file_content: str | None, file_name: str | None,
+                           mime_type: str | None) -> tuple[bytes, str | None]:
+    """(bytes, detected format or None) of an upload that is kept as it is (store_file).
+
+    Any file is accepted, recognised or not (a ZIP of images, say); the same size limit and
+    the same "this is a file name, not a file" diagnosis as every other upload apply.
+    """
+    if not file_content or not file_content.strip():
+        raise UnsupportedFormatError(NO_FILE_MESSAGE)
+    raw, was_plain_text = _decode_file_content(file_content)
+    _check_input_size(raw)
+    fmt = detect_format(file_name=file_name, mime_type=mime_type, data=raw)
+    if not fmt and was_plain_text:
+        if _looks_like_a_file_name(file_content):
+            raise _file_name_in_content(file_content, file_name)
+        fmt = _sniff_plain_text(raw)
+    return raw, fmt
 
 
 def read_raw_upload(file_content: str | None, file_name: str | None) -> bytes:

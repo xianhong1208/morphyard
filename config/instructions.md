@@ -73,10 +73,16 @@ the user wants **to receive a file** -> `convert_document`.
    first and confirm the split with the user.
 5. **The password stays in the conversation history.** When using
    `pdf_protect`, remind the user not to reuse a password from another system.
-6. **Most tools take one file per call; `pdf_merge` takes several.** To merge
-   PDFs, pass each one to `pdf_merge` in `files` (as its content or its
-   `file_id`). To convert several files, call the tool once per file and say
-   the work happens in several steps.
+6. **Most tools take one file per call; `pdf_merge` and `images_to_pdf` take
+   several in `files`.** Each item of `files` is `{"file_id": "f_..."}` or the
+   file itself in `file_content`. When the user uploaded several files and each
+   upload reference can only go into one `file_content`, first call
+   `store_file` once per upload (reference in its `file_content`), collect the
+   `file_id`s it returns, then make one call:
+   `pdf_merge(files=[{"file_id": "f_A..."}, {"file_id": "f_B..."}])`, in the
+   order the user wants. A client that can send HTTP may instead get an upload
+   URL from `create_upload` and `PUT` the file to it. To convert several files,
+   call the tool once per file and say the work happens in several steps.
 7. **Always put the upload reference into `file_content`.**
    When you see a reference such as `[Uploaded Artifact: "report.pptx"]`, put it
    into `file_content`, not into `file_name` and not into `target_format`.

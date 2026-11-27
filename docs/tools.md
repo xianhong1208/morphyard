@@ -18,26 +18,28 @@
 | `pdf_compress` | Make a PDF smaller (`lossless` / `balanced` / `small`) | File |
 | `pdf_metadata` | Info, XMP, version, pages, encryption, scripts, attachments | Text |
 | `pdf_strip_metadata` | Remove metadata (and optionally scripts / attachments) | File |
-| `pdf_merge` | Merge 2–20 PDFs in order, one bookmark per file | File |
+| `pdf_merge` | Merge 2–20 PDFs (`files`) in order, one bookmark per file | File |
 | `pdf_delete_pages` | Remove selected pages | File |
 | `pdf_reorder_pages` | Put every page in a new order (`3,1,2,4-10`, `10-1`, `reverse`) | File |
 | `pdf_watermark` | Text or image (PNG/JPEG) watermark: centre, diagonal or tiled; opacity, colour, rotation; all or chosen pages | File |
 | `pdf_page_numbers` | Page numbers (`{page}`, `{total}`), header and footer text; position, start number, skip the first page, font size, margin | File |
 | `pdf_to_images` | Render pages as PNG, JPEG or WebP, one image per page | File (one page) or ZIP |
-| `images_to_pdf` | One image, a multi-page TIFF or a ZIP of images → one PDF, a page per image | File |
+| `images_to_pdf` | Several images (`files`), one image, a multi-page TIFF or a ZIP of images → one PDF, a page per image | File |
 | `job_status` | The result of a conversion that was still running when its tool answered (waits up to 20 s) | What the tool returns |
 | `job_cancel` | Stop a queued or running conversion | Text |
 | `job_list` | Your conversions: queued, running and recently finished | Text |
+| `store_file` | Keep one (injected) file on the server as it is and get its `file_id` | Text |
+| `create_upload` | A signed, single-use URL to `PUT` one file to, and the `file_id` it will have | Text |
 
 **Long conversions.** Every tool that converts answers within 20 s: if the work is not done by then, the reply gives a `job_id` and the conversion goes on; `job_status` returns the result when it is ready. See [Jobs](configuration.md#jobs).
 
 **PDF pages to images.** `pdf_to_images` renders with Poppler's `pdftoppm`: `image_format` `png` (default), `jpg` or `webp`; `dpi` 36–300 (default 150); `pages` like `1-3,7` (empty = all, at most 50 per call); `quality` 1–95 for JPEG / WebP. A page that would exceed 25 megapixels at the requested DPI is rendered at a lower DPI, and the reply says so. One page comes back as the image; several come back as one ZIP (`<name>_p01.png`, …), because some clients turn image resources into model input and a ZIP is one download. The images together may not exceed 50 MB. Password-protected PDFs are refused (a PDF with only an owner password renders). `convert_document` from PDF to an image format points the model at this tool.
 
-**Images to a PDF.** `images_to_pdf` takes one file: an image (PNG, JPEG, WebP, TIFF, GIF, BMP), every page of a multi-page TIFF, the first frame of a GIF / WebP animation, or a ZIP of images whose pages follow the file names in natural order (`page2` before `page10`; non-images, `__MACOSX/` and hidden files are skipped and listed). `page_size` `fit` (default, each page the size of its image at the resolution the file records, else 96 DPI), `a4` or `letter` (image scaled to fit inside the margins and centred); `orientation` `auto` (landscape for wide images), `portrait` or `landscape`; `margin_mm` 0–50 (default 0 for `fit`, 10 otherwise). EXIF orientation is applied; JPEGs (and the main image of a camera MPO file) are embedded byte for byte, with the orientation applied by the placement on the page; other images are stored losslessly; transparency becomes white; a matching ICC profile is kept. Limits: 100 pages, 50 megapixels per image, 400 megapixels in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output. HEIC / AVIF are not read yet (1.6). `convert_document` from one image to `pdf` uses the same code with `fit` pages; before, it OCRed the picture and returned its text in a PDF.
+**Images to a PDF.** `images_to_pdf` takes several images in `files` (one page each, in the order given; each item a `file_id` or base64, a PDF or ZIP among them is refused), or one file: an image (PNG, JPEG, WebP, TIFF, GIF, BMP), every page of a multi-page TIFF, the first frame of a GIF / WebP animation, or a ZIP of images whose pages follow the file names in natural order (`page2` before `page10`; non-images, `__MACOSX/` and hidden files are skipped and listed). `page_size` `fit` (default, each page the size of its image at the resolution the file records, else 96 DPI), `a4` or `letter` (image scaled to fit inside the margins and centred); `orientation` `auto` (landscape for wide images), `portrait` or `landscape`; `margin_mm` 0–50 (default 0 for `fit`, 10 otherwise). EXIF orientation is applied; JPEGs (and the main image of a camera MPO file) are embedded byte for byte, with the orientation applied by the placement on the page; other images are stored losslessly; transparency becomes white; a matching ICC profile is kept. Limits: 100 pages, 50 megapixels per image, 400 megapixels in all, 500 ZIP entries, 200 MB unpacked, 100 MB of output. HEIC / AVIF are not read yet (1.6). `convert_document` from one image to `pdf` uses the same code with `fit` pages; before, it OCRed the picture and returned its text in a PDF.
 
 ### PDF page tools
 
-- **Input.** `pdf_merge` takes `files`, a list of `{file_content, file_name}` items (base64) `{file_id}` items (an earlier result) or `{url}` items (downloaded, public addresses only), because a host's upload injection fills only one `file_content` per call: the caller passes the bytes itself. The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
+- **Input.** `pdf_merge` takes `files`, a list of `{file_id}` items (a file kept on the server), `{file_content, file_name}` items (base64) or `{url}` items (downloaded, public addresses only). A host's upload injection fills only one `file_content` per call, so uploads are first stored one by one with `store_file` and then passed by `file_id` (see [Several files per call](configuration.md#several-files-per-call-and-uploads)). The other page tools take the usual triple; `pdf_watermark`'s image goes in `watermark_image` as base64.
 - **Pages.** Page selections use the same 1-based syntax as `pdf_extract_pages` (`1-3,7,10-`). `pdf_reorder_pages` insists that every page appears exactly once and names the missing or repeated ones; use `pdf_delete_pages` to drop pages.
 - **Kept.** Merge nests each file's bookmarks under a bookmark named after the file. Delete and reorder keep the bookmarks whose page survives, pointing at its new place. Watermark and page numbers keep bookmarks, links, form fields and metadata.
 - **Placement.** Watermarks, numbers, headers and footers are drawn in the page as the reader sees it (the crop box, turned by the page's rotation), so they sit upright on landscape and rotated pages and on documents that mix page sizes. A single watermark or a header too long for the page is shrunk to fit.
@@ -91,7 +93,7 @@ The engine table, the planner's rules and the format-detection details are in [d
 
 ## Known limits
 
-- One file per call, except `pdf_merge`, which takes its files as base64 or `file_id`s in a list (a host that can inject only one upload cannot feed it base64 yet; several uploads in one call is planned for 1.4). For several images, `images_to_pdf` takes a ZIP. A multi-step job (convert, then watermark, then compress) passes each result on by `file_id`, so no file travels back through the model.
+- One file per call, except `pdf_merge` and `images_to_pdf`, which take up to 20 files (200 MB) in `files`. A host that can inject only one upload per call stores each with `store_file` and passes the `file_id`s. Other tools take several files one call at a time. A multi-step job (convert, then watermark, then compress) passes each result on by `file_id`, so no file travels back through the model.
 - 50 MB per file, 30 pages per OCR run.
 - A limited number of conversions run at once (by default the CPU count, at most 8); more wait in a queue, and past its length or wait time a tool answers "the server is busy" and should be called again a little later. See [Concurrent conversions](configuration.md#concurrent-conversions).
 - PDF → editable formats is always lossy; tables inside PDFs are recovered heuristically.

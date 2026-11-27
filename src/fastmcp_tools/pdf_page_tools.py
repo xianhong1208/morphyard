@@ -5,69 +5,39 @@ registered from register_morphyard_tools(). The same contracts apply as in
 morphyard_tools.py: the single input file arrives as the file_content /
 file_name / mime_type triple, and every tool returns [summary, File].
 
-pdf_merge is the exception to the triple. A host's file injection fills one
-file_content per call, so merge takes a list of {file_content, file_name}
-items whose base64 the caller supplies itself (any MCP client that holds the
-files: Claude Code, FastMCP clients, scripts). Hosts that can only inject a
-single upload cannot feed it yet; several uploaded files in one call is on the
-1.4 roadmap.
+pdf_merge is the exception to the triple: it takes `files`, a list of FileInput items
+(file_inputs.py), each the PDF itself (base64) or the file_id of a PDF kept on the server. A
+host that injects an upload into one file_content per call gets several uploads there by
+storing each with store_file first and passing the file_ids.
 """
 
-import inspect
-from typing import Annotated, Any
+from typing import Any
 
 from fastmcp import FastMCP
-from pydantic import BaseModel, Field
 
 from src.domain.convert import pdf_pages
 from src.domain.operations import InputSource
-from src.domain.operations.sources import input_source
+from src.fastmcp_tools.file_inputs import files_parameter, item_sources
 from src.fastmcp_tools.operation_tool import Inputs, Reply, add_operation_tool, upload
 from src.log import get_mcptools_logger
 
 logger = get_mcptools_logger()
 
 
-class MergeInput(BaseModel):
-    """One PDF to merge: the file itself, the file_id of an earlier result, or a URL"""
-
-    file_content: str | None = Field(
-        default=None,
-        description="The PDF itself, base64-encoded. Leave empty when file_id is given.")
-    file_name: str | None = Field(
-        default=None,
-        description="Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for "
-                    "this file in the merged PDF (default: the stored name for a file_id).")
-    file_id: str | None = Field(
-        default=None,
-        description="Instead of file_content: the file_id of a PDF an earlier Morphyard "
-                    "tool returned. Give only one of file_content, file_id and url.")
-    url: str | None = Field(
-        default=None,
-        description="Instead of file_content: an http or https address to download the PDF "
-                    "from (public addresses only). Give only one of file_content, file_id "
-                    "and url.")
-
-
-def _merge_sources(kwargs: dict[str, Any], _detect: bool, owner: str) -> list[InputSource]:
+def _merge_sources(kwargs: dict[str, Any], detect: bool, owner: str) -> list[InputSource]:
     """One source per item, read in order (the first unreadable item raises)."""
-    return [input_source(owner=owner, file_content=item.file_content, file_id=item.file_id,
-                         file_name=item.file_name, url=item.url)
-            for item in kwargs.pop("files")]
+    return item_sources(kwargs.pop("files"), owner, detect)
 
 
 MERGE_FILES = Inputs(
-    params=[inspect.Parameter(
-        "files", inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        annotation=Annotated[list[MergeInput], Field(
-            min_length=2, max_length=pdf_pages.MAX_MERGE_FILES,
-            description="The PDFs to merge, in the order they should appear: the first "
-                        "item's pages come first. Each item carries one PDF as base64 in "
-                        "file_content plus its file_name, or the file_id of a PDF an "
-                        "earlier Morphyard tool returned. "
-                        f"2 to {pdf_pages.MAX_MERGE_FILES} files, at most "
-                        f"{pdf_pages.MAX_MERGE_TOTAL_MB} MB together.")],
-    )],
+    params=[files_parameter(
+        "The PDFs to merge, in the order they should appear: the first item's pages come "
+        "first. Each item is one PDF: its file_id ('f_...', from store_file, create_upload "
+        "or an earlier Morphyard tool), the PDF itself as base64 in file_content plus "
+        "its file_name, or a url to download it from. The file name (or the stored name) becomes that file's bookmark. "
+        f"2 to {pdf_pages.MAX_MERGE_FILES} files, at most {pdf_pages.MAX_MERGE_TOTAL_MB} MB "
+        "together.",
+        min_length=2, max_length=pdf_pages.MAX_MERGE_FILES)],
     sources=_merge_sources,
 )
 
@@ -78,11 +48,12 @@ def register_pdf_page_tools(mcp: FastMCP):
 
     add_operation_tool(mcp, "pdf_merge", """Merge several PDFs into one PDF, in the given order.
 
-        Pass every PDF yourself as base64 in `files`, or the file_id of a PDF an
-        earlier Morphyard tool returned (this tool does not use the single
-        file_content upload slot of the other tools). If you only hold an upload
-        reference and cannot pass the bytes, tell the user merging needs the files
-        themselves. Encrypted PDFs are refused: remove their password first.
+        Pass the PDFs in `files`, each as a file_id or as base64 in file_content.
+        This tool has no single file_content upload slot: when the user's PDFs are
+        upload references (e.g. [Uploaded Artifact: "a.pdf"]), call store_file once
+        per upload with the reference in its file_content, collect the file_ids it
+        returns, then call this tool with files=[{"file_id": ...}, ...] in the
+        order wanted. Encrypted PDFs are refused: remove their password first.
         """, reply=Reply.FILES, returns=list, inputs=MERGE_FILES, inputs_at=0)
 
     add_operation_tool(mcp, "pdf_delete_pages", """Delete pages from a PDF and return the PDF without them.

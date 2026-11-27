@@ -46,7 +46,7 @@ EXPECTED_ARITY = {
     "pdf_watermark": Arity.ONE_TO_ONE,
     "pdf_page_numbers": Arity.ONE_TO_ONE,
     "pdf_to_images": Arity.ONE_TO_ONE,
-    "images_to_pdf": Arity.ONE_TO_ONE,
+    "images_to_pdf": Arity.MANY_TO_ONE,
 }
 
 
@@ -81,8 +81,9 @@ async def _tools() -> dict[str, dict]:
                 if t.name not in JOB_TOOLS}
 
 
-# The job tools reach jobs, not operations (issue #34).
-JOB_TOOLS = {"job_status", "job_cancel", "job_list"}
+# The job tools reach jobs, not operations (issue #34); store_file and create_upload put files
+# on the server (issue #36).
+JOB_TOOLS = {"job_status", "job_cancel", "job_list", "store_file", "create_upload"}
 
 
 def test_every_tool_has_exactly_one_operation():
