@@ -1829,6 +1829,194 @@
     }
   },
   {
+    "name": "pipeline",
+    "title": "Pipeline",
+    "description": "Run several Morphyard tools in a row on the server, as one call, and return only the final file(s).\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nUse it when the user wants more than one operation on the same file(s), e.g. \"merge these,\ncompress, and stamp DRAFT on it\" or \"split this PDF and rotate every part\", or the same\noperation on several files (\"compress all of these\"). Intermediate results stay on the server\nand are not sent back, so this is faster and lighter than calling the tools one by one with\nfile_id. For a single operation call that tool directly.\n\nGive the input as one file (file_content for an upload reference, file_id or url) or several\nin `files`, and the `steps` in order, each {\"tool\": name, \"args\": {...}} with that tool's own\narguments (not the file). How files flow: a one-file tool (pdf_compress, pdf_rotate,\nconvert_document ...) runs on each current file; pdf_split gives several files; pdf_merge and\nimages_to_pdf combine all current files into one. Every step is checked before anything runs\nand an error names the step. At most 10 steps. Several final files come back as links, or as\none ZIP with zip_outputs=true (always one ZIP above 10 files). Tools that answer with data\n(extract_text, inspect_document, pdf_metadata) cannot be steps: call them on the result.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "description": "The steps, run in order, e.g. [{\"tool\": \"pdf_merge\", \"args\": {}}, {\"tool\": \"pdf_compress\", \"args\": {\"level\": \"small\"}}, {\"tool\": \"pdf_watermark\", \"args\": {\"text\": \"DRAFT\"}}]. 1 to 10 steps.",
+          "items": {
+            "description": "One step: a Morphyard tool and its arguments (without the file)",
+            "properties": {
+              "tool": {
+                "description": "The tool to run, e.g. 'pdf_merge', 'pdf_compress', 'convert_document'. One of: convert_document, pdf_extract_pages, pdf_split, pdf_rotate, pdf_to_images, images_to_pdf, pdf_merge, pdf_delete_pages, pdf_reorder_pages, pdf_watermark, pdf_page_numbers, pdf_compress, pdf_protect, pdf_unlock, pdf_strip_metadata.",
+                "type": "string"
+              },
+              "args": {
+                "additionalProperties": true,
+                "description": "That tool's own arguments, by name, as you would pass them to the tool (e.g. {\"text\": \"DRAFT\"} for pdf_watermark), without file_content, file_id, url or files: the step's input is the previous step's result.",
+                "type": "object"
+              }
+            },
+            "required": [
+              "tool"
+            ],
+            "type": "object"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        },
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "description": "One file: the file itself, the file_id of a file kept on the server, or a URL",
+                "properties": {
+                  "file_content": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The file itself, base64-encoded. Leave empty when file_id or url is given."
+                  },
+                  "file_name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Its file name with extension, e.g. 'Chapter 1.pdf' (default: the stored name for a file_id)."
+                  },
+                  "file_id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Instead of file_content: the file_id ('f_...') of a file kept on the server: a result of an earlier Morphyard tool, a file stored with store_file, or an upload made with create_upload. Give only one of file_content, file_id and url."
+                  },
+                  "url": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Instead of file_content: an http or https address to download the file from (public addresses only). Give only one of file_content, file_id and url."
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Several input files, in order (pdf_merge keeps this order): each item is a file's file_id ('f_...', from store_file, create_upload or an earlier Morphyard tool), the file itself as base64 in file_content plus its file_name, or a url to download it from. Use instead of file_content / file_id / url. 1 to 20 files."
+        },
+        "output_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name without extension for the final file, or for the ZIP when the results are zipped. Default: the last step's own naming."
+        },
+        "zip_outputs": {
+          "default": false,
+          "description": "Return several final files as one ZIP instead of one link each. More than 10 files are always zipped.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "steps"
+      ]
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
     "name": "store_file",
     "title": "Store File",
     "description": "Keep one uploaded file on the server and get its file_id, without converting it.\n\nUse it to give a Morphyard tool several uploaded files when each upload can only\nbe passed in a single file_content: call store_file once per file (put the upload\nreference, e.g. [Uploaded Artifact: \"a.pdf\"], in file_content), collect the\nfile_ids, then pass them all at once, e.g. pdf_merge or images_to_pdf with\nfiles=[{\"file_id\": \"f_...\"}, {\"file_id\": \"f_...\"}]. Any tool also takes a single\nfile_id instead of file_content. The file is kept as it is, for you only, for a\nlimited time (the reply says until when).",

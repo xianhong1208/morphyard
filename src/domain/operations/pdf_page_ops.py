@@ -82,6 +82,7 @@ register(Operation(
     arity=Arity.MANY_TO_ONE,
     run=_merge,
     input_formats=PDF, output_formats=PDF, wrong_input=_merge_wrong_input,
+    min_inputs=2,
 ))
 
 

@@ -472,20 +472,38 @@ def progress_forwarder(info_ctx: Context | None = None):
     if request_ctx is None and info_ctx is None:
         return None
 
+    last: list[float] = []
+
     async def on_event(n: int, event: Event) -> None:
         if info_ctx is not None and event.operation:
             await info_ctx.info(event.message)
-        if request_ctx is not None:
+        if request_ctx is None:
+            return
+        if event.total is None:
             await request_ctx.report_progress(n, None, event.message)
+            return
+        # Measured progress (a pipeline: steps done of `total`). Events in between (queue
+        # position, the operation's own messages) repeat the last value; MCP wants every
+        # notification's progress larger than the one before, so they get a hair more.
+        value = event.progress if not last or event.progress > last[0] else last[0] + 1e-6
+        last[:] = [value]
+        await request_ctx.report_progress(value, event.total, event.message)
     return on_event
 
 
 async def run_as_job(op, name: str, reply: "Reply", kwargs: dict, sources: list, owner: str,
                      info_ctx: Context | None):
-    jobs = get_jobs()
-
     async def work(job: Job) -> OpResult:
         return await execute(op, kwargs, sources, notify=job.say)
+
+    return await run_work_as_job(name, reply, work, owner, info_ctx)
+
+
+async def run_work_as_job(name: str, reply: "Reply", work, owner: str,
+                          info_ctx: Context | None):
+    """Run `work(job) -> OpResult` as a job of the tool `name` (the pipeline's whole run is
+    one such job): wait up to jobs.wait_sec, then answer with the result or a job handle."""
+    jobs = get_jobs()
 
     async def keep(job: Job, result: OpResult) -> KeptResult:
         return await _keep_job_result(reply, job, result)

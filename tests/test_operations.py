@@ -82,8 +82,8 @@ async def _tools() -> dict[str, dict]:
 
 
 # The job tools reach jobs, not operations (issue #34); store_file and create_upload put files
-# on the server (issue #36).
-JOB_TOOLS = {"job_status", "job_cancel", "job_list", "store_file", "create_upload"}
+# on the server (issue #36); pipeline runs several operations (issue #37).
+JOB_TOOLS = {"job_status", "job_cancel", "job_list", "store_file", "create_upload", "pipeline"}
 
 
 def test_every_tool_has_exactly_one_operation():

@@ -139,6 +139,11 @@ class Operation:
     # (images_to_pdf takes a ZIP of images, which is not a document format).
     detect_input_format: bool = True
     takes_slot: bool = True
+    # The formats produced for these arguments, when they depend on them: (args, what
+    # `prepare` returned) -> formats. Used by the pipeline's up-front format check.
+    outputs_for: Callable[[BaseModel, Any], frozenset[str]] | None = None
+    # The fewest input files a many_to_one operation takes (pdf_merge: 2).
+    min_inputs: int = 1
 
     def parse_args(self, values: dict[str, Any] | BaseModel) -> BaseModel:
         """Validate arguments against this operation's model."""

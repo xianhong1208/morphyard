@@ -30,8 +30,15 @@
 | `job_list` | 你的轉換：排隊中、執行中與最近完成的 | 文字 |
 | `store_file` | 把一個（注入的）檔案原封不動存在伺服器上，取得它的 `file_id` | 文字 |
 | `create_upload` | 一個有簽章、只能用一次的上傳網址（以 `PUT` 送一個檔案），以及檔案將有的 `file_id` | 文字 |
+| `pipeline` | 在伺服器上依序執行多個工具（合併 → 壓縮 → 浮水印、分割 → 旋轉、對多個檔案跑同一個工具），作為一個工作 | 最後的檔案，或一個 ZIP |
 
 **較久的轉換。** 每個會轉換的工具都在 20 秒內回覆：若到時還沒完成，回覆會給一個 `job_id`，轉換繼續進行；結果好了之後用 `job_status` 取得。見[工作](configuration.zh-TW.md#工作)。
+
+**管線。** `pipeline` 在伺服器上把多個工具依序跑完，作為一次呼叫，只回傳最後的檔案；中間檔案不會再經過模型。輸入：一個檔案（`file_content`、`file_id` 或 `url`），或在 `files` 放多個（最多 20 個）。`steps`：1–10 個 `{"tool": "<工具>", "args": {...}}`，每個工具自己的參數，不含檔案。檔案依工具的種類流動：單檔工具（`pdf_compress`、`pdf_rotate`、`convert_document`…）會對目前每個檔案各跑一次，`pdf_split` 把一個檔案變成多個，`pdf_merge` 與 `images_to_pdf` 把目前所有檔案合成一個。所以 `files` 加上 `[pdf_merge, pdf_compress, pdf_watermark]` 得到一個 PDF，`[pdf_split, pdf_rotate]` 會旋轉每個分割出的檔案，對 10 個檔案跑 `[pdf_compress]` 會各自壓縮。步驟可以是任何回傳檔案的工具：`convert_document`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_to_images`、`images_to_pdf`、`pdf_merge`、`pdf_delete_pages`、`pdf_reorder_pages`、`pdf_watermark`、`pdf_page_numbers`、`pdf_compress`、`pdf_protect`、`pdf_unlock`、`pdf_strip_metadata`；回傳資料的工具（`extract_text`、`inspect_document`、`pdf_metadata`、`list_supported_conversions`）請另外對結果呼叫。
+
+- **先檢查。** 在讀取任何檔案之前檢查：步驟數、每個工具名稱、它的參數是否符合該工具自己的參數（`args` 裡放檔案參數會被拒絕）、工具只靠參數就能做的檢查（例如 `target_format`）、檔案數（`pdf_merge` 需要兩個）以及已知時的格式（`convert_document` 轉成 `docx` 後接 PDF 工具會被拒絕）。每個拒絕都會指出步驟與參數，例如 `Step 2 of 3 (pdf_compress): 'level': …`，並說明什麼都沒有執行。只有執行時才知道的問題（輸入實際的格式、某一步做出的加密 PDF）會以 `Step k of n (tool) failed: …` 失敗，說明哪些步驟已完成，且不保留任何檔案。
+- **結果。** 最後一步的檔案會像其他工具的結果一樣保存並給連結（依回傳方式設定）。多個檔案各給一個連結，或設 `zip_outputs=true` 包成一個 ZIP；超過 10 個一律打包。`output_name` 是唯一的最終檔案或 ZIP 的名稱。回覆文字會列出每一步的結果。兩個步驟之間最多保留 200 個檔案。
+- **一個工作。** 整條管線是一個工作：超過 20 秒就回傳 `job_id` 供 `job_status` 使用，`job_cancel` 會停止正在執行的步驟（連同它的引擎程序），之後的步驟不會執行。進度通知以步驟計算：`total` 是步驟數，`progress` 從 0 增加到它（某一步要處理多個檔案時以分數前進），每則訊息都會指出步驟（`Step 2 of 3 (pdf_compress): file 1 of 4`）。每一步只在自己的工作期間占用一個轉換名額，所以長管線在步驟之間不會占著名額。
 
 **PDF 頁面轉圖片。** `pdf_to_images` 以 Poppler 的 `pdftoppm` 繪製：`image_format` 為 `png`（預設）、`jpg` 或 `webp`；`dpi` 36–300（預設 150）；`pages` 如 `1-3,7`（空白 = 全部，每次最多 50 頁）；`quality` 1–95，用於 JPEG / WebP。某頁在指定 DPI 下會超過 2500 萬像素時，改用較低 DPI 繪製，並在回覆中說明。單頁回傳圖片本身；多頁回傳一個 ZIP（`<name>_p01.png`…），因為有些 client 會把圖片 resource 變成模型輸入，而 ZIP 對使用者是一次下載。全部圖片合計不得超過 50 MB。有開啟密碼的 PDF 會被拒絕（只有權限密碼的 PDF 可以繪製）。`convert_document` 從 PDF 轉成圖片格式時，會指引模型改用這個工具。
 
@@ -93,7 +100,7 @@ client ──(bearer token)──▶ /mcp ──▶ tools ──▶ service.py �
 
 ## 已知限制
 
-- 一次呼叫只處理一個檔案，`pdf_merge` 與 `images_to_pdf` 除外：它們在 `files` 一次接收最多 20 個檔案（合計 200 MB）。每次呼叫只能注入一個上傳檔的 host，先用 `store_file` 逐一存下，再交出 `file_id`。其他工具處理多個檔案時一次呼叫一個。多步驟的工作（先轉檔、再加浮水印、再壓縮）用 `file_id` 把每一步的結果交給下一步，檔案不必再經過模型。
+- 一次呼叫只處理一個檔案，`pdf_merge` 與 `images_to_pdf` 除外：它們在 `files` 一次接收最多 20 個檔案（合計 200 MB）。每次呼叫只能注入一個上傳檔的 host，先用 `store_file` 逐一存下，再交出 `file_id`。其他工具每次呼叫處理一個檔案；要對多個檔案跑同一個工具，或依序跑多個工具，請用 `pipeline`（步驟之間檔案不會再經過模型）。分開呼叫時也可以用 `file_id` 把每一步的結果交給下一步。
 - 單檔 50 MB，每次 OCR 最多 30 頁。
 - 同時執行的轉換數有上限（預設為 CPU 數，最多 8）；其餘排隊等待，超過佇列長度或等待時間時，工具會回答「伺服器忙碌」，稍後再呼叫即可。見[同時轉換](configuration.zh-TW.md#同時轉換)。
 - PDF → 可編輯格式一定有損；PDF 內的表格以啟發式方式還原。

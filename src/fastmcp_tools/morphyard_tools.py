@@ -26,6 +26,7 @@ from src.fastmcp_tools.operation_tool import Reply, add_operation_tool, upload
 from src.fastmcp_tools.pdf_image_tools import register_pdf_image_tools
 from src.fastmcp_tools.pdf_page_tools import register_pdf_page_tools
 from src.fastmcp_tools.pdf_secure_tools import register_pdf_secure_tools
+from src.fastmcp_tools.pipeline_tool import register_pipeline_tool
 from src.fastmcp_tools.upload_tools import register_upload_tools
 from src.log import get_mcptools_logger
 
@@ -120,6 +121,9 @@ def register_morphyard_tools(mcp: FastMCP):
 
     # PDF pages <-> images (1.3)
     register_pdf_image_tools(mcp)
+
+    # pipeline (1.4): several tools in a row on the server, one job
+    register_pipeline_tool(mcp)
 
     # store_file, create_upload (1.4): files onto the server ahead, for `files` / file_id
     register_upload_tools(mcp)
