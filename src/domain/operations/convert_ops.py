@@ -223,6 +223,7 @@ register(Operation(
     run=_convert_document,
     prepare=_prepare_convert,
     output_formats=None,   # chosen by target_format
+    outputs_for=lambda _args, target: frozenset({target}),
     start_message=lambda args: f"Converting to {args.target_format}...",
 ))
 

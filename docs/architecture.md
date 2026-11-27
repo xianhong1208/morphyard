@@ -196,11 +196,13 @@ Every tool is backed by one `Operation` in `src/domain/operations/`, and the reg
 
 | Field | Meaning |
 |---|---|
-| `name` | The tool name (and, later, the pipeline step name) |
+| `name` | The tool name (and the pipeline step name) |
 | `args_model` | Pydantic model of the tool's own arguments: names, types, defaults, descriptions. The input file parameters are not in it |
 | `arity` | `many_to_one` (`pdf_merge`), `one_to_one` (most), `one_to_many` (`pdf_split`), `one_to_report` (`inspect_document`, `extract_text`, `pdf_metadata`), `none_to_report` (`list_supported_conversions`); `arity.produces_files` is false for the report kinds |
 | `input_formats` / `output_formats` | Accepted and produced formats (`None` = any detectable input / chosen by the arguments, as for `convert_document`) |
-| `prepare` | Checks of the arguments alone, run before any input is read (a bad option is answered at once, even when the server is busy) |
+| `prepare` | Checks of the arguments alone, run before any input is read (a bad option is answered at once, even when the server is busy, and a pipeline checks every step with it before running) |
+| `outputs_for` | Optional: the formats produced for given arguments, when `output_formats` depends on them (`convert_document`: the target format); used by the pipeline's format check |
+| `min_inputs` | The fewest files a `many_to_one` operation takes (`pdf_merge`: 2) |
 | `run` | `OpCall` (resolved `Artifact`s, validated arguments, what `prepare` built, a `notify` callback) → `OpResult` (summary, `OutputFile`s, or a report) |
 
 `execute(op, args, sources, notify=None)` is the one path that runs an operation: start message → `prepare` → each input resolved and format-checked in turn (`sources` are callables, so where the bytes come from is the caller's business) → `run`. An input of the wrong format, or a request the operation declines with a plain answer, raises `OperationRefused`. Operations take the conversion slot themselves, around the engine work only. `get_operation(name)`, `list_operations()` and `Operation.describe()` let callers introspect it; `Operation.parse_args()` validates an argument dict (unknown arguments are refused).
@@ -215,6 +217,14 @@ The MCP tools are built from it by `add_operation_tool()`: the tool's parameters
 - **Progress:** each operation message (`OpCall.say`) and each queue/start step is an `Event` on the job; a waiting call (the original or `job_status`) passes new events on as `notifications/progress` (`Context.report_progress`, a no-op without a progressToken) and, for `convert_document`, as log messages as before.
 - **Cancel:** `task.cancel()`; `CliEngine._run_command` kills the engine's process group on cancellation, and the `async with conversion_slot()` releases the slot. Work in a thread (pikepdf, Pillow, pypdf) cannot be interrupted: it finishes in the background and its result is dropped.
 - **Limits:** per owner and in all at submission, `max_sec` with `asyncio.timeout` around the whole job; finished jobs are pruned lazily after `keep_sec` (the file TTL). In memory only: a restart loses jobs.
+
+## Pipelines
+
+`src/domain/operations/pipeline.py` (issue #37) runs several operations in a row; `src/fastmcp_tools/pipeline_tool.py` is the `pipeline` MCP tool around it.
+
+- **Plan first.** `plan(steps, input_count)` checks the whole pipeline before any input is read: 1–10 steps; each `tool` is a registered operation whose arity produces files; no file parameter in `args`; `args` through `Operation.parse_args()` and `prepare`; file counts simulated through the arities (`count` known or "several" after a `one_to_many`) against `min_inputs`; formats simulated through `output_formats` / `outputs_for` against the next step's `input_formats` (unknown before the first step). Every refusal is a `PipelineError` (`pipeline_invalid`) naming the step.
+- **Run.** `run(planned, sources)` keeps the current files in memory as `Artifact`s: a `one_to_one` or `one_to_many` step calls `execute()` once per file, a `many_to_one` step once on all. The first step reads the pipeline's input sources (the usual lazy `InputSource`s, owner-checked). A failure re-raises the `DomainException` with `Step k of n (tool) failed: …` in front (an `OperationRefused` becomes a `PipelineError`, `pipeline_step_failed`); more than 200 files between steps stops it. The last step's files become the result, zipped when asked or above 10.
+- **Job.** The tool plans and checks the input parameters, then hands `run()` to `operation_tool.run_work_as_job()`, so the whole pipeline is one job with the usual wait, handle, owner and cancel rules. Progress: `Job.set_progress(done, total, message)` stamps every later event with `done`/`total`, and `progress_forwarder` sends those as `progress`/`total` (events in between get a hair more, so the value always increases); other jobs keep the event count as before. Each operation takes its conversion slot itself, so the slot is free between steps.
 
 ## Conversion planning
 

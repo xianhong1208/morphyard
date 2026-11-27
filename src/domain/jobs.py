@@ -102,9 +102,12 @@ class JobsSettings:
 @dataclass
 class Event:
     """One progress step: `message` for people; `operation` is True for the operation's own
-    messages (the ones a tool used to send as log notifications)."""
+    messages (the ones a tool used to send as log notifications). `progress` / `total` are
+    the job's measured progress when it has one (a pipeline: steps done of steps), else None."""
     message: str
     operation: bool = False
+    progress: float | None = None
+    total: float | None = None
 
 
 @dataclass(eq=False)
@@ -130,6 +133,9 @@ class Job:
     _ticket: asyncio.Future | None = None
     _limiter: ConversionLimiter | None = None
     _changed: asyncio.Event = field(default_factory=asyncio.Event)
+    # (done, total) once the work reports measured progress (set_progress); every later event
+    # carries it.
+    _progress: tuple[float, float] | None = None
 
     # ------------------------------------------------------------ state
 
@@ -148,8 +154,14 @@ class Job:
         changed.set()
 
     def add_event(self, message: str, operation: bool = False) -> None:
-        self.events.append(Event(message, operation))
+        done, total = self._progress if self._progress is not None else (None, None)
+        self.events.append(Event(message, operation, done, total))
         self._touch()
+
+    async def set_progress(self, done: float, total: float, message: str) -> None:
+        """Measured progress (a pipeline's steps): `done` of `total`, with a message."""
+        self._progress = (done, total)
+        self.add_event(message)
 
     async def say(self, message: str) -> None:
         """The operation's progress callback (OpCall.notify)."""
