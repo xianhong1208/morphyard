@@ -39,6 +39,21 @@ class RevocationConfig(BaseModel):
     stale_after_intervals: int = Field(4, ge=2, le=100)
 
 
+class ToolPolicyConfig(BaseModel):
+    """MCP Gate tool approvals and access rules on this server (`auth.tool_policy`).
+
+    Off by default. When enabled, only tool definitions approved in the MCP Gate console are
+    listed and callable, MCP Gate's access rules apply to each token, and a call that only lacks
+    a scope gets HTTP 403 insufficient_scope (step-up). Uses the revocation feed's client
+    (`auth.revocation.client_id` / `client_secret`) to read `<issuer>/oauth/policy`.
+    """
+    enabled: bool = False
+    poll_interval_sec: float = Field(15, ge=5, le=3600)
+    # "closed": before any policy was received (MCP Gate never reached, no cache) every tool is
+    # hidden; "open": every tool is listed and callable until the first policy arrives.
+    fail_mode: Literal["open", "closed"] = "closed"
+
+
 class AuthConfig(BaseModel):
     """Bearer-token verification against an OAuth 2.1 authorization server (MCP Gate).
 
@@ -53,6 +68,8 @@ class AuthConfig(BaseModel):
     required_scopes: list[str] = []
     # MCP Gate revocation feed (off by default; needs a resource-server client).
     revocation: RevocationConfig = Field(default_factory=RevocationConfig)
+    # MCP Gate tool approvals + access rules + step-up (off by default; same client as revocation).
+    tool_policy: ToolPolicyConfig = Field(default_factory=ToolPolicyConfig)
 
 
 class LoggingConfig(BaseModel):

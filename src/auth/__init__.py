@@ -23,6 +23,14 @@ from src.auth.revocation import (
     revocation_status,
     set_revocation_list,
 )
+from src.auth.tool_policy import (
+    ToolPolicy,
+    build_tool_policy,
+    check_pipeline_steps,
+    get_tool_policy,
+    set_tool_policy,
+    tool_policy_status,
+)
 from src.log import get_api_logger
 
 logger = get_api_logger()
@@ -102,14 +110,38 @@ def init_revocation(config, env_refs=None) -> RevocationList | None:
     return rl
 
 
+def init_tool_policy(config, env_refs=None) -> ToolPolicy | None:
+    """Build (or clear) the MCP Gate tool policy for `config` and say once whether it is on."""
+    settings = resolve_auth_settings(config)
+    tp = build_tool_policy(config, issuer=settings.issuer if settings else None,
+                           audience=settings.audience if settings else None, env_refs=env_refs)
+    set_tool_policy(tp)
+    if settings is None:
+        return None
+    if tp is None:
+        logger.info("MCP Gate tool approvals and access rules: off (auth.tool_policy.enabled: false) "
+                    "- every tool is listed to every valid token")
+        return None
+    logger.info(
+        f"MCP Gate tool approvals and access rules: ENABLED (feed: {tp.feed.center}/oauth/policy, "
+        f"client: {tp.feed.client_id}, poll every {tp.pinning.poll_interval:g}s, "
+        f"fail_mode: {tp.fail_mode}, cache: {tp.pinning.cache_file})")
+    return tp
+
+
 __all__ = [
     "AuthSettings",
     "RevocationList",
+    "ToolPolicy",
     "build_auth_provider",
+    "check_pipeline_steps",
     "check_revoked",
     "get_revocation_list",
+    "get_tool_policy",
     "init_revocation",
+    "init_tool_policy",
     "resolve_auth_settings",
     "revocation_lifespan",
     "revocation_status",
+    "tool_policy_status",
 ]
