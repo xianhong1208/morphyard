@@ -38,7 +38,8 @@ MAX_INPUT_MB = 50
 NO_FILE_MESSAGE = (
     "No file provided. Upload a file first; the host injects it into "
     "file_content automatically. To use a file an earlier Morphyard tool "
-    "returned, pass its file_id instead."
+    "returned, pass its file_id instead; for a file on the web, pass its "
+    "http(s) address in url."
 )
 
 # Output formats that can carry images. When converting to one of these, the

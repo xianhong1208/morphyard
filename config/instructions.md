@@ -98,7 +98,10 @@ the user wants **to receive a file** -> `convert_document`.
 9. **Pass a result on by its `file_id`.** To work further on a file a tool
    just returned (convert, then watermark, then compress), call the next tool
    with `file_id` set to that result's `file_id` instead of `file_content`;
-   do not copy the file's content back. Give one of the two, never both.
+   do not copy the file's content back. When the user gives a link to a file
+   instead of uploading it, pass the link in `url`. Give only one of
+   `file_content`, `file_id` and `url`. Only public addresses are fetched: if
+   a URL is refused as internal or local, ask the user to upload the file.
 
 10. **A long conversion answers with a `job_id`.** When a tool replies that
    the work is still running and gives a `job_id`, call `job_status` with that

@@ -1,9 +1,8 @@
 """Several files in one call: the `files` parameter of pdf_merge and images_to_pdf (issue #36).
 
-Every item is a `FileInput`: the file itself (`file_content`, base64) or the `file_id` of a
+Every item is a `FileInput`: the file itself (`file_content`, base64), the `file_id` of a
 file kept on the server (a result, a file stored with `store_file`, or an upload made with
-`create_upload`). Exactly one of the two. A new kind of source (a URL, say) is one more
-optional field here and one more branch in `_item_source`.
+`create_upload`), or a `url` to download it from (issue #35). Exactly one of the three.
 
 Checks, in this order, so a bad request is answered before any file is read:
   1. the count (the JSON schema says 1..20 / 2..20; Pydantic refuses the rest);
@@ -36,11 +35,12 @@ STORE_HINT = ("If the host can only put an uploaded file into a single file_cont
 
 
 class FileInput(BaseModel):
-    """One file: the file itself, or the file_id of a file kept on the server"""
+    """One file: the file itself, the file_id of a file kept on the server, or a URL"""
 
     file_content: str | None = Field(
         default=None,
-        description="The file itself, base64-encoded. Leave empty when file_id is given.")
+        description="The file itself, base64-encoded. Leave empty when file_id or url is "
+                    "given.")
     file_name: str | None = Field(
         default=None,
         description="Its file name with extension, e.g. 'Chapter 1.pdf' (default: the "
@@ -49,8 +49,13 @@ class FileInput(BaseModel):
         default=None,
         description="Instead of file_content: the file_id ('f_...') of a file kept on the "
                     "server: a result of an earlier Morphyard tool, a file stored with "
-                    "store_file, or an upload made with create_upload. Give either "
-                    "file_content or file_id, not both.")
+                    "store_file, or an upload made with create_upload. Give only one of "
+                    "file_content, file_id and url.")
+    url: str | None = Field(
+        default=None,
+        description="Instead of file_content: an http or https address to download the file "
+                    "from (public addresses only). Give only one of file_content, file_id "
+                    "and url.")
 
 
 def _given(value: object) -> bool:
@@ -65,22 +70,28 @@ def _label(position: int, item: FileInput) -> str:
 def check_items(items: list[FileInput]) -> None:
     """Refuse an item that gives no file or two (before anything is read)."""
     for position, item in enumerate(items, start=1):
-        content, fid = _given(item.file_content), _given(item.file_id)
-        if content and fid:
-            raise ToolError(f"{_label(position, item)} gives both file_content and file_id: "
-                            "give exactly one of them.")
-        if not content and not fid:
+        given = [name for name, value in (("file_content", item.file_content),
+                                          ("file_id", item.file_id), ("url", item.url))
+                 if _given(value)]
+        if len(given) > 1:
+            raise ToolError(f"{_label(position, item)} gives "
+                            f"{'both ' if len(given) == 2 else ''}{' and '.join(given)}: "
+                            "give exactly one of file_content, file_id and url.")
+        if not given:
             raise ToolError(f"{_label(position, item)} gives no file: set file_content (the "
-                            "file itself, base64) or file_id (a file kept on the server). "
-                            + STORE_HINT)
+                            "file itself, base64), file_id (a file kept on the server) or url "
+                            "(an http or https address). " + STORE_HINT)
 
 
 def _named(position: int, item: FileInput, source: InputSource) -> InputSource:
     """The source, with the item named in any error it raises."""
 
-    def resolve() -> Artifact:
+    async def resolve() -> Artifact:
         try:
-            return source()
+            artifact = source()
+            if inspect.isawaitable(artifact):  # a URL item downloads
+                artifact = await artifact
+            return artifact
         except DomainException as e:
             e.message = f"{_label(position, item)}: {e.message}"
             e.args = (e.message,)
@@ -95,8 +106,8 @@ def item_sources(items: list[FileInput], owner: str, detect: bool) -> list[Input
     cap = MAX_CALL_MB * 1024 * 1024
 
     def counted(source: InputSource) -> InputSource:
-        def resolve() -> Artifact:
-            artifact = source()
+        async def resolve() -> Artifact:
+            artifact = await source()
             total["bytes"] += len(artifact.data)
             if total["bytes"] > cap:
                 raise UnsupportedFormatError(
@@ -108,7 +119,7 @@ def item_sources(items: list[FileInput], owner: str, detect: bool) -> list[Input
 
     return [counted(_named(position, item, input_source(
                 owner=owner, detect=detect, file_content=item.file_content,
-                file_id=item.file_id, file_name=item.file_name)))
+                file_id=item.file_id, file_name=item.file_name, url=item.url)))
             for position, item in enumerate(items, start=1)]
 
 

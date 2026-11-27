@@ -33,8 +33,8 @@ MERGE_FILES = Inputs(
     params=[files_parameter(
         "The PDFs to merge, in the order they should appear: the first item's pages come "
         "first. Each item is one PDF: its file_id ('f_...', from store_file, create_upload "
-        "or an earlier Morphyard tool), or the PDF itself as base64 in file_content plus "
-        "its file_name. The file name (or the stored name) becomes that file's bookmark. "
+        "or an earlier Morphyard tool), the PDF itself as base64 in file_content plus "
+        "its file_name, or a url to download it from. The file name (or the stored name) becomes that file's bookmark. "
         f"2 to {pdf_pages.MAX_MERGE_FILES} files, at most {pdf_pages.MAX_MERGE_TOTAL_MB} MB "
         "together.",
         min_length=2, max_length=pdf_pages.MAX_MERGE_FILES)],

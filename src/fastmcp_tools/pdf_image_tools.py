@@ -24,7 +24,7 @@ from src.log import get_mcptools_logger
 
 logger = get_mcptools_logger()
 
-_SINGLE = ("file_content", "file_id")
+_SINGLE = ("file_content", "file_id", "url")
 
 
 def _image_sources(kwargs: dict[str, Any], detect: bool, owner: str) -> list[InputSource]:
@@ -38,7 +38,7 @@ def _image_sources(kwargs: dict[str, Any], detect: bool, owner: str) -> list[Inp
         raise ToolError(
             f"Give the images either in files or in {given[0]}, not both: for several images "
             "put every one of them in files.")
-    for name in ("file_content", "file_name", "mime_type", "file_id"):
+    for name in ("file_content", "file_name", "mime_type", "file_id", "url"):
         kwargs.pop(name, None)
     return item_sources(items, owner, detect)
 
@@ -47,8 +47,9 @@ IMAGE_FILES = Inputs(
     params=upload().params + [files_parameter(
         "Several images, one page each, in the order given: each item is an image's "
         "file_id ('f_...', from store_file, create_upload or an earlier Morphyard tool), or "
-        "the image itself as base64 in file_content plus its file_name. Use instead of "
-        f"file_content / file_id. 1 to {MAX_FILES_PER_CALL} images.",
+        "the image itself as base64 in file_content plus its file_name, or a url to download "
+        "it from. Use instead of file_content / file_id / url. "
+        f"1 to {MAX_FILES_PER_CALL} images.",
         min_length=1, optional=True)],
     sources=_image_sources,
 )

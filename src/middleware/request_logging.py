@@ -6,6 +6,27 @@ import time
 from src.log import get_api_logger, get_mcptools_logger
 
 
+
+def redact_url_args(value):
+    """A copy of tool arguments with the path and query of every `url` cut off (presigned
+    URLs carry secrets there; issue #35). Only scheme://host:port stays."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if k == "url" and isinstance(v, str):
+                from urllib.parse import urlsplit
+                try:
+                    parts = urlsplit(v.strip())
+                    out[k] = f"{parts.scheme}://{parts.netloc.rsplit('@', 1)[-1]}/…" if parts.netloc else "…"
+                except ValueError:
+                    out[k] = "…"
+            else:
+                out[k] = redact_url_args(v)
+        return out
+    if isinstance(value, list):
+        return [redact_url_args(v) for v in value]
+    return value
+
 class RequestLogMiddleware:
     """Access log for every HTTP request and its response.
 
@@ -164,7 +185,8 @@ class RequestLogMiddleware:
                 args = params.get("arguments")
                 if args is not None:
                     logger.debug(
-                        f"[MCP_REQ_ARGS] tool={tool} args={_json.dumps(args, ensure_ascii=False)}"
+                        f"[MCP_REQ_ARGS] tool={tool} "
+                        f"args={_json.dumps(redact_url_args(args), ensure_ascii=False)}"
                     )
             else:
                 label = f"method={mcp_method}"

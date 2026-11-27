@@ -24,6 +24,9 @@
 | `MORPHYARD_JOB_WAIT_SEC` | `20` | 一次呼叫等待轉換完成的秒數，超過就改回傳工作 id；也是 `job_status` 最長的等待時間（最多 120）。見[工作](#工作)。 |
 | `MORPHYARD_MAX_JOBS_PER_OWNER` / `MORPHYARD_MAX_JOBS` | `5` / `64` | 同時排隊或執行中的工作數：每人、整台伺服器。 |
 | `MORPHYARD_JOB_MAX_SEC` | `1800` | 工作執行超過這麼多秒（含排隊時間）就停止。 |
+| `MORPHYARD_URL_FETCH` | `true` | 工具可用 `url` 接收檔案；`false` 會拒絕所有網址。見[網址輸入](#網址輸入)。 |
+| `MORPHYARD_URL_ALLOW` / `MORPHYARD_URL_DENY` | 空白 | 以逗號分隔的網段（CIDR）與完整主機名稱：允許下載的區網主機，以及一律拒絕的主機（拒絕優先）。 |
+| `MORPHYARD_URL_TIMEOUT_SEC` | `60` | 一次下載（含轉址）的總秒數，最多 600。 |
 | `LOG_LEVEL` | `INFO` | |
 
 YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 scope（例如 `mcp:tools:invoke`）；`auth.audience` 則可在註冊的 resource URI 不是 `<base_url>/mcp` 的少數情況下覆寫推導值。
@@ -123,17 +126,38 @@ r2 = await client.call_tool("pdf_watermark", {"text": "DRAFT", "file_id": "f_o2U
 r3 = await client.call_tool("pdf_compress", {"file_id": "<r2 的 file_id>"})
 ```
 
-- `file_content` 與 `file_id` 擇一，不能同時給。空的 `file_id` 視為沒有給（注入上傳檔的 host 會把放參照的參數清空）。
+- `file_content`、`file_id` 與 `url` 三者只能給一個。空的 `file_id` 視為沒有給（注入上傳檔的 host 會把放參照的參數清空）。
 - `file_id` 只有產生它的那個人能用，而且只到到期為止。不存在、已過期或屬於別人的 id 都得到同樣的回答，不會透露檔案是否存在。未啟用認證時，所有人都是同一個人（`anonymous`）。
 - 給 `file_id` 時仍可另給 `file_name` / `mime_type`；沒給就用存檔時的名稱與類型。一般的 50 MB 輸入上限照樣適用。
 
+## 網址輸入
+
+每個接收檔案的工具也接收 `url`：Morphyard 會從這個 http 或 https 網址下載檔案（`pdf_merge` 的項目也可以給 `{url}`）。檔名取自伺服器的 `Content-Disposition`，沒有的話用網址路徑的最後一段，有給 `file_name` 則以它為準；格式判斷與其他輸入相同，一般的輸入大小上限（`MAX_INPUT_MB`）也適用。
+
+```python
+await client.call_tool("convert_document", {"url": "https://example.org/report.docx",
+                                            "target_format": "pdf", "output_name": "report"})
+```
+
+會替呼叫者去抓指定網址的伺服器，可能被利用來存取只有伺服器才連得到的地方（伺服器端請求偽造，SSRF）。因此 Morphyard 預設**只連公開位址**：
+
+- **只接受 http 與 https。** `file:`、`ftp:`、`gopher:`、`data:` 等一律拒絕，網址裡帶帳號密碼（`user:pass@host`）的也拒絕；不會送出任何帳密、cookie，也不經過 proxy。
+- **每個位址都必須是公開位址。** 主機名稱解析出的位址只要有一個是 loopback、私有網段（10/8、172.16/12、192.168/16、fc00::/7）、link-local（169.254/16，雲端 metadata 就在這裡；fe80::/10）、電信級 NAT（100.64/10）、效能測試、保留、多播或 `0.0.0.0`，整個網址就會被拒絕。內含 IPv4 位址的 IPv6 位址（`::ffff:127.0.0.1`、6to4、NAT64）以其中的 IPv4 位址判斷。`2130706433`、`0177.0.0.1`、`0x7f.1` 這類寫法會先解析成實際位址，再一樣拒絕。
+- **連線直接連到檢查過的位址。** 每條連線只解析一次名稱，之後不再查詢，所以檢查與連線之間 DNS 回應改變（DNS rebinding）也換不到別的位址。TLS 仍以主機名稱檢查憑證。
+- **轉址**由 Morphyard 自己處理，最多 5 次，每一次都和第一個網址一樣重新檢查；從 https 轉到 http 一律拒絕。
+- **大小與時間。** `Content-Length` 超過上限就在讀取前拒絕；內容一邊接收一邊計算大小，而且是 gzip 或 deflate 解壓縮之後的大小，所以壓縮炸彈到上限就會停止（其他編碼一律拒絕）。連線上限 10 秒、15 秒沒有收到資料就停止，整次下載則以 `MORPHYARD_URL_TIMEOUT_SEC`（60 秒）為限。
+- **本機的下載連結。** 這台伺服器自己的下載連結（`<MORPHYARD_PUBLIC_URL>/files/…`）會在檢查簽章後直接從暫存區讀取，不會真的去下載；過期或被改過的連結會被拒絕。和連結本身一樣，持有連結的人都能使用。
+- **紀錄**只寫網址的 scheme、主機與連接埠，不寫路徑與查詢字串（預先簽章的網址會把密鑰放在那裡）。
+
+伺服器在區網時，可以用 `MORPHYARD_URL_ALLOW` 開放指定主機：`MORPHYARD_URL_ALLOW=192.168.1.0/24,nas.lan` 允許連到這個網段以及名為 `nas.lan` 的主機（名稱須完全相符，解析出的位址不限）。開放的只有「必須是公開位址」這一條：scheme、帳密、轉址、大小與時間的限制照樣適用，`0.0.0.0` 與多播也永遠不會連。`MORPHYARD_URL_DENY` 的寫法相同，列出的一律拒絕，公開位址也一樣；拒絕優先於允許。允許 `127.0.0.0/8` 等於讓網址能連到 Morphyard 所在機器上的服務，請先想清楚再開。proxy 會讓位址檢查失效，所以不論 `HTTP_PROXY` 怎麼設都不使用 proxy。
 
 ## 一次呼叫多個檔案與上傳
 
 `pdf_merge`（2–20 個 PDF）與 `images_to_pdf`（1–20 張圖片，每張一頁）接收 `files`，清單中每個項目是一個檔案：
 
 - `{"file_id": "f_…"}`：留在伺服器上的檔案（工具的結果、用 `store_file` 存下的檔案，或用 `create_upload` 上傳的檔案），或
-- `{"file_content": "<base64>", "file_name": "a.pdf"}`：檔案本身。
+- `{"file_content": "<base64>", "file_name": "a.pdf"}`：檔案本身，或
+- `{"url": "https://…"}`：由 Morphyard 下載的檔案（見[網址輸入](#網址輸入)）。
 
 每個項目只能給其中一種。有問題的項目會在讀取任何檔案之前就被拒絕，每個錯誤都會指出是哪一個項目（`File #2 in files (b.pdf): …`）。一次呼叫的檔案合計最多 200 MB；每個檔案仍受 50 MB 的輸入上限限制。`images_to_pdf` 也仍可改用 `file_content` / `file_id` 接收單張圖片或圖片 ZIP。
 

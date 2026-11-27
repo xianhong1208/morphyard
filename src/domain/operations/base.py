@@ -24,6 +24,7 @@ work only, exactly where the tools took it before; `takes_slot` records which do
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -192,7 +193,7 @@ def list_operations() -> list[Operation]:
     return list(_REGISTRY.values())
 
 
-InputSource = Callable[[], Artifact]
+InputSource = Callable[[], Artifact | Awaitable[Artifact]]
 
 
 def _check_count(op: Operation, count: int) -> None:
@@ -219,8 +220,8 @@ async def execute(
       4. `run`.
 
     `sources` are callables so inputs are read lazily, one at a time, in this
-    order; where the bytes come from (base64 today, a stored file or a URL later)
-    is the caller's business.
+    order; where the bytes come from (base64, a stored file or a URL)
+    is the caller's business. A source may be async (a URL is fetched).
     """
     if isinstance(op, str):
         op = get_operation(op)
@@ -232,6 +233,8 @@ async def execute(
     inputs: list[Artifact] = []
     for position, source in enumerate(sources, start=1):
         artifact = source()
+        if inspect.isawaitable(artifact):  # a source that downloads (a URL) is async
+            artifact = await artifact
         refusal = op.check_input(artifact, position)
         if refusal is not None:
             raise OperationRefused(refusal)
