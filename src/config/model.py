@@ -149,6 +149,36 @@ class JobsConfig(BaseModel):
     max_sec: float = Field(1800, gt=0)
 
 
+class FetchConfig(BaseModel):
+    """URL inputs (`fetch:`, issue #35): tools can take a file by its http(s) address.
+
+    Only public addresses are fetched; `allow` lists LAN networks (CIDR) and exact host names
+    that may be reached anyway, `deny` lists networks and host names that never are (deny wins).
+    Both are comma lists in the environment (MORPHYARD_URL_ALLOW / MORPHYARD_URL_DENY).
+    """
+    enabled: bool = True
+    allow: list[str] = []
+    deny: list[str] = []
+    # The whole fetch, redirects included. Connect (10 s) and idle (15 s) limits are fixed.
+    timeout_sec: float = Field(60, gt=0, le=600)
+
+    @field_validator("allow", "deny", mode="before")
+    @classmethod
+    def _comma_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+    @field_validator("allow", "deny")
+    @classmethod
+    def _valid_entries(cls, v, info):
+        from src.domain.fetch.policy import parse_entries
+        parse_entries(v, f"MORPHYARD_URL_{info.field_name.upper()}")
+        return v
+
+
 class AppConfig(BaseModel):
     """Application metadata."""
     name: str = "MyMCP"
@@ -216,6 +246,7 @@ class ConfigModel(BaseModel):
     convert: ConvertConfig = ConvertConfig()
     files: FilesConfig = Field(default_factory=FilesConfig)
     jobs: JobsConfig = Field(default_factory=JobsConfig)
+    fetch: FetchConfig = Field(default_factory=FetchConfig)
     modules: ModulesConfig
 
 
@@ -224,6 +255,7 @@ __all__ = [
     "AuthConfig",
     "ConfigModel",
     "ConvertConfig",
+    "FetchConfig",
     "FilesConfig",
     "JobsConfig",
     "LoggingConfig",

@@ -140,8 +140,15 @@ MIME_TYPE = Annotated[str | None, Field(
 FILE_ID = Annotated[str | None, Field(
     description="Instead of file_content: the file_id of a file an earlier Morphyard "
                 "tool returned (e.g. 'f_...'), to work on that result without passing "
-                "it back. Give either file_content or file_id, not both. Never put an "
+                "it back. Give only one of file_content, file_id and url. Never put an "
                 "upload reference here; that goes in file_content.")]
+URL = Annotated[str | None, Field(
+    description="Instead of file_content: an http or https address to download the file "
+                "from, when the user gives a link rather than uploading the file. Only "
+                "public addresses are fetched (no internal or local hosts unless the "
+                "server allows them), the usual size limit applies, and the name comes "
+                "from the server or the URL unless file_name is given. Give only one of "
+                "file_content, file_id and url. Never put an upload reference here.")]
 
 _KW = inspect.Parameter.POSITIONAL_OR_KEYWORD
 
@@ -177,17 +184,19 @@ def _upload_sources(kwargs: dict[str, Any], detect: bool, owner: str) -> list[In
         file_name=kwargs.pop("file_name", None),
         mime_type=kwargs.pop("mime_type", None),
         file_id=kwargs.pop("file_id", None),
+        url=kwargs.pop("url", None),
     )]
 
 
 def upload(file_content=FILE_CONTENT) -> Inputs:
-    """One input file: the file_content / file_name / mime_type triple, or a file_id."""
+    """One input file: the file_content / file_name / mime_type triple, a file_id or a url."""
     return Inputs(
         params=[
             inspect.Parameter("file_content", _KW, default=None, annotation=file_content),
             inspect.Parameter("file_name", _KW, default=None, annotation=FILE_NAME),
             inspect.Parameter("mime_type", _KW, default=None, annotation=MIME_TYPE),
             inspect.Parameter("file_id", _KW, default=None, annotation=FILE_ID),
+            inspect.Parameter("url", _KW, default=None, annotation=URL),
         ],
         sources=_upload_sources,
     )

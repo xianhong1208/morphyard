@@ -78,6 +78,16 @@ jobs:
   max_active: ${MORPHYARD_MAX_JOBS:-64}                   # jobs queued or running at once on the server
   max_sec: ${MORPHYARD_JOB_MAX_SEC:-1800}                 # a job is stopped after this long, queue wait included
 
+# Tools take a file by URL too (`url`, next to file_content and file_id). Only public addresses are
+# fetched: every address the host resolves to must be public, the connection goes to the address that
+# was checked, redirects (at most 5, never https -> http) are checked again, and the file is capped at
+# convert.max_input_mb. allow / deny: comma lists of networks (CIDR) and exact host names; deny wins.
+fetch:
+  enabled: ${MORPHYARD_URL_FETCH:-true}
+  allow: "${MORPHYARD_URL_ALLOW:-}"          # e.g. 192.168.1.0/24,nas.lan (LAN hosts that may be fetched)
+  deny: "${MORPHYARD_URL_DENY:-}"            # networks / host names never fetched, even when allowed
+  timeout_sec: ${MORPHYARD_URL_TIMEOUT_SEC:-60}   # the whole fetch, redirects included
+
 modules:
   enabled:
     - morphyard

@@ -1,9 +1,10 @@
 """Where an operation's input comes from: lazy `InputSource`s (issue #33).
 
-An input is either the file itself (`file_content`: base64 or plain text, as every tool has
-always taken it) or the `file_id` of a file kept on the server, such as the result of an earlier
-tool. `input_source()` picks the one the caller gave; nothing is read until `execute()` calls the
-source, so a bad argument is still answered before any input is touched.
+An input is the file itself (`file_content`: base64 or plain text, as every tool has always taken
+it), the `file_id` of a file kept on the server, such as the result of an earlier tool, or a `url`
+to fetch it from (issue #35, through the SSRF guard in src/domain/fetch/). `input_source()` picks
+the one the caller gave; nothing is read or fetched until `execute()` calls the source, so a bad
+argument is still answered before any input is touched.
 
 A `file_id` is owner-checked: only the person whose call stored the file can use it. An id that
 is unknown, expired or someone else's gets the same refusal, so the answer never says whether a
@@ -21,6 +22,7 @@ from src.domain.convert.service import (
 )
 from src.domain.convert.types import UnsupportedFormatError, stem_of
 from src.domain.exceptions import DomainException
+from src.domain.fetch import fetch_input
 from src.domain.files import get_store, valid_file_id
 from src.domain.operations.base import Artifact, InputSource
 
@@ -28,8 +30,9 @@ from src.domain.operations.base import Artifact, InputSource
 ANONYMOUS_OWNER = "anonymous"
 
 BOTH_GIVEN_MESSAGE = (
-    "Give either file_content or file_id, not both: file_content is the file itself, "
-    "file_id names a file an earlier Morphyard tool returned."
+    "Give only one of file_content, file_id and url: file_content is the file itself, "
+    "file_id names a file an earlier Morphyard tool returned, url is an http(s) address "
+    "to download it from."
 )
 
 
@@ -97,17 +100,35 @@ def stored_source(file_id: str, owner: str, file_name: str | None = None,
     return resolve
 
 
+def url_source(url: str, file_name: str | None = None, mime_type: str | None = None,
+               detect: bool = True) -> InputSource:
+    """A file fetched from an http(s) URL (async). `file_name` / `mime_type` override what the
+    server says (Content-Disposition or the URL path, Content-Type)."""
+
+    async def resolve() -> Artifact:
+        fetched = await fetch_input(url.strip())
+        name = _given(file_name) or fetched.name
+        if not detect:
+            check_raw_input(fetched.data, name)
+            return Artifact(data=fetched.data, fmt=None, name=stem_of(name), file_name=name)
+        source = resolve_stored_input(fetched.data, name, _given(mime_type) or fetched.mime)
+        return Artifact(data=source.data, fmt=source.fmt, name=source.name, file_name=name)
+    return resolve
+
+
 def input_source(*, owner: str, file_content: str | None = None, file_id: str | None = None,
                  file_name: str | None = None, mime_type: str | None = None,
-                 detect: bool = True) -> InputSource:
-    """The source for one input given as file_content or file_id (exactly one of them)."""
-    content, fid = _given(file_content), _given(file_id)
-    if content is not None and fid is not None:
+                 url: str | None = None, detect: bool = True) -> InputSource:
+    """The source for one input given as file_content, file_id or url (exactly one of them)."""
+    content, fid, link = _given(file_content), _given(file_id), _given(url)
+    if sum(v is not None for v in (content, fid, link)) > 1:
         def both() -> Artifact:
             raise UnsupportedFormatError(BOTH_GIVEN_MESSAGE)
         return both
     if fid is not None:
         return stored_source(fid, owner, file_name, mime_type, detect)
+    if link is not None:
+        return url_source(link, file_name, mime_type, detect)
     if content is None:
         def neither() -> Artifact:
             raise UnsupportedFormatError(NO_FILE_MESSAGE, file_name=file_name)
@@ -117,5 +138,5 @@ def input_source(*, owner: str, file_content: str | None = None, file_id: str | 
 
 __all__ = [
     "ANONYMOUS_OWNER", "BOTH_GIVEN_MESSAGE", "UnknownFileError", "input_source",
-    "read_stored", "stored_source", "upload_source",
+    "read_stored", "stored_source", "upload_source", "url_source",
 ]

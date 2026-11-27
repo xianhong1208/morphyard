@@ -15,6 +15,7 @@ from src.version import get_version
 from src.auth import build_auth_provider, init_revocation, resolve_auth_settings, revocation_lifespan
 from src.api.router.files import install_access_log_redaction
 from src.config.config_manager import Config
+from src.domain.fetch import init_fetch
 from src.domain.files import files_lifespan, init_files
 from src.domain.jobs import jobs_lifespan, init_jobs
 from src.log import get_api_logger
@@ -152,6 +153,9 @@ def create_app(config: BaseModel, transport: str):
 
     # --- Jobs: conversions that outlive their call (in memory) ---
     init_jobs(config)
+
+    # --- URL inputs: allow/deny lists and the fetch time limit ---
+    init_fetch(config)
 
     @asynccontextmanager
     async def lifespan(app):

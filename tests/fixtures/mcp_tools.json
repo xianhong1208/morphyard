@@ -85,7 +85,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -161,7 +173,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         },
         "allow_quality_loss": {
           "default": true,
@@ -234,7 +258,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         },
         "max_chars": {
           "default": 50000,
@@ -319,7 +355,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       },
       "required": [
@@ -391,7 +439,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -464,7 +524,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       },
       "required": [
@@ -546,7 +618,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -645,7 +729,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -713,7 +809,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       },
       "required": [
@@ -785,7 +893,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -868,7 +988,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -889,7 +1021,7 @@
         "files": {
           "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item carries one PDF as base64 in file_content plus its file_name, or the file_id of a PDF an earlier Morphyard tool returned. 2 to 20 files, at most 50 MB together.",
           "items": {
-            "description": "One PDF to merge: the file itself or the file_id of an earlier result",
+            "description": "One PDF to merge: the file itself, the file_id of an earlier result, or a URL",
             "properties": {
               "file_content": {
                 "anyOf": [
@@ -925,7 +1057,19 @@
                   }
                 ],
                 "default": null,
-                "description": "Instead of file_content: the file_id of a PDF an earlier Morphyard tool returned. Give either file_content or file_id, not both."
+                "description": "Instead of file_content: the file_id of a PDF an earlier Morphyard tool returned. Give only one of file_content, file_id and url."
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Instead of file_content: an http or https address to download the PDF from (public addresses only). Give only one of file_content, file_id and url."
               }
             },
             "type": "object"
@@ -1020,7 +1164,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       },
       "required": [
@@ -1091,7 +1247,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       },
       "required": [
@@ -1222,7 +1390,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -1364,7 +1544,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -1448,7 +1640,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },
@@ -1534,7 +1738,19 @@
             }
           ],
           "default": null,
-          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+          "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give only one of file_content, file_id and url. Never put an upload reference here; that goes in file_content."
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Instead of file_content: an http or https address to download the file from, when the user gives a link rather than uploading the file. Only public addresses are fetched (no internal or local hosts unless the server allows them), the usual size limit applies, and the name comes from the server or the URL unless file_name is given. Give only one of file_content, file_id and url. Never put an upload reference here."
         }
       }
     },

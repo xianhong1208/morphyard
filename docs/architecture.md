@@ -30,7 +30,10 @@ src/
 │   ├── pdf_secure_ops.py     pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
 │   ├── pdf_page_ops.py       pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
 │   ├── pdf_image_ops.py      pdf_to_images / images_to_pdf
-│   └── sources.py            Lazy input sources: file_content (base64 / text) or a stored file_id (owner-checked)
+│   └── sources.py            Lazy input sources: file_content (base64 / text), a stored file_id (owner-checked) or a url
+├── domain/fetch/            URL inputs (#35)
+│   ├── policy.py             Which addresses may be reached: public only, allow/deny lists, IPv6-embedded IPv4
+│   └── fetcher.py            Guarded fetch: pinned connection (resolve once, connect to the checked IP), manual redirects, size/time caps, own links from the store
 ├── domain/files/
 │   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
 │   ├── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
@@ -106,6 +109,8 @@ mime_type:    Optional[str]
 The names are part of the public contract and must not change. Hosts that inject uploaded files match on these exact names.
 
 Every tool that takes a file also accepts `file_id: Optional[str]` after these three: a file in the store (a result an earlier call returned), read through the same lazy input sources (`src/domain/operations/sources.py`) and held to the same size limit and format detection. One of `file_content` / `file_id` must be given, not both; an empty string counts as absent, because a host that injects an upload blanks the parameter the model put the reference in. A `file_id` is owner-checked against the caller (the token's `sub`; `anonymous` without auth), and an unknown, expired or foreign id all raise the same `file_not_found` error. `pdf_merge` items take `file_id` the same way.
+
+After `file_id` comes `url: Optional[str]` (#35): an http(s) address, fetched by `src/domain/fetch/` when `execute()` resolves the input (a source may be async). Only one of `file_content` / `file_id` / `url` may be given. The fetch goes through `PinnedBackend`, an `httpcore.AsyncNetworkBackend` whose `connect_tcp` resolves the host once, judges every address with `AddressPolicy` and connects to the judged IP literal (TLS keeps the host name for SNI and certificate checks), so a second DNS answer is never used. Redirects are followed by hand and every hop goes through the same checks. The body is read with httpcore (no automatic decoding) and gzip/deflate are decoded in steps bounded by the size left under `MAX_INPUT_MB`. A URL on this server's own `/files/` path is read from the store after its signature check. The fetch runs inside the job before the operation takes a conversion slot, so a slow server holds no slot.
 
 ### Output
 

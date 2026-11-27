@@ -37,7 +37,7 @@
 
 ### PDF 頁面工具
 
-- **輸入。** `pdf_merge` 接收 `files`：一個 `{file_content, file_name}`（base64）或 `{file_id}`（先前的結果）的清單，因為 host 的上傳注入每次呼叫只填一個 `file_content`，所以由呼叫端自己傳入檔案內容。其他頁面工具使用一般的三個參數；`pdf_watermark` 的圖片以 base64 放在 `watermark_image`。
+- **輸入。** `pdf_merge` 接收 `files`：一個 `{file_content, file_name}`（base64）、`{file_id}`（先前的結果）或 `{url}`（由 Morphyard 下載，只限公開位址）的清單，因為 host 的上傳注入每次呼叫只填一個 `file_content`，所以由呼叫端自己傳入檔案內容。其他頁面工具使用一般的三個參數；`pdf_watermark` 的圖片以 base64 放在 `watermark_image`。
 - **頁面。** 頁面選擇與 `pdf_extract_pages` 相同，從 1 起算（`1-3,7,10-`）。`pdf_reorder_pages` 要求每頁剛好出現一次，並指出缺少或重複的頁碼；要拿掉頁面請用 `pdf_delete_pages`。
 - **保留。** 合併時，每個檔案原有的書籤會放在以該檔名命名的書籤底下。刪除與重排會保留指向仍存在頁面的書籤，並指到新位置。浮水印與頁碼會保留書籤、連結、表單欄位與中繼資料。
 - **位置。** 浮水印、頁碼、頁首與頁尾都畫在讀者看到的頁面上（crop box，再依頁面旋轉轉正），所以橫向、旋轉過的頁面與大小不一的文件上都是正的。單一浮水印或頁首太長時會縮小到放得下。
@@ -75,7 +75,7 @@ client ──(bearer token)──▶ /mcp ──▶ tools ──▶ service.py �
                              └── JWTVerifier(jwks_uri = MCP_GATE_URL/.well-known/jwks.json)
 ```
 
-1. **輸入。** 工具接收 `file_content`（base64）、`file_name` 與 `mime_type`，或改給 `file_id`：先前某個 Morphyard 工具回傳、仍留在伺服器上的結果（見[用 file_id 串接工具](configuration.zh-TW.md#用-file_id-串接工具)）。管理上傳檔案的 host 通常會自動注入 base64；參數描述的措辭刻意引導模型只把上傳參照放進 `file_content`，不放在其他地方。
+1. **輸入。** 工具接收 `file_content`（base64）、`file_name` 與 `mime_type`，或改給 `file_id`：先前某個 Morphyard 工具回傳、仍留在伺服器上的結果（見[用 file_id 串接工具](configuration.zh-TW.md#用-file_id-串接工具)），或給 `url` 讓 Morphyard 自行下載，只限公開位址（見[網址輸入](configuration.zh-TW.md#網址輸入)）。管理上傳檔案的 host 通常會自動注入 base64；參數描述的措辭刻意引導模型只把上傳參照放進 `file_content`，不放在其他地方。
 2. **偵測。** `detect_format()` 依序嘗試副檔名、MIME、容器內部結構、檔頭魔數 —— 因為實務上檔名經常缺席。
 3. **規劃。** `plan_conversion()` 找出直接引擎或最多三跳的路徑，依 fidelity、跳數與中繼格式偏好排序。直接路徑永遠不會被拒絕。低於 `structural` fidelity 的多跳路徑會照轉並附上警告；`allow_quality_loss=false` 時則改為拒絕。
 4. **執行。** 引擎以子程序在暫存工作區中執行並設有逾時；掃描版 PDF 會自動從文字抽取 fallback 到 OCR。

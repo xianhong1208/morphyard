@@ -24,6 +24,9 @@ Everything is in [`config/config.yaml`](../config/config.yaml) and reads environ
 | `MORPHYARD_JOB_WAIT_SEC` | `20` | Seconds a call waits for its conversion before answering with a job id; also the longest `job_status` wait (at most 120). See [Jobs](#jobs). |
 | `MORPHYARD_MAX_JOBS_PER_OWNER` / `MORPHYARD_MAX_JOBS` | `5` / `64` | Jobs queued or running at once: per person, and on the server. |
 | `MORPHYARD_JOB_MAX_SEC` | `1800` | A job is stopped after this many seconds, its wait in the queue included. |
+| `MORPHYARD_URL_FETCH` | `true` | Tools take a file by `url`. `false` refuses every URL. See [URL inputs](#url-inputs). |
+| `MORPHYARD_URL_ALLOW` / `MORPHYARD_URL_DENY` | empty | Comma lists of networks (CIDR) and exact host names: LAN hosts that may be fetched, and hosts that never are (deny wins). |
+| `MORPHYARD_URL_TIMEOUT_SEC` | `60` | Seconds for a whole fetch, redirects included (at most 600). |
 | `LOG_LEVEL` | `INFO` | |
 
 In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:invoke` on every token, and `auth.audience` overrides the derived audience for the rare case where the registered resource URI is not `<base_url>/mcp`.
@@ -123,9 +126,30 @@ r2 = await client.call_tool("pdf_watermark", {"text": "DRAFT", "file_id": "f_o2U
 r3 = await client.call_tool("pdf_compress", {"file_id": "<file_id from r2>"})
 ```
 
-- Give `file_content` **or** `file_id`, not both. An empty `file_id` counts as not given (a host that injects an upload blanks the parameter the reference was in).
+- Give one of `file_content`, `file_id` and `url`, never two. An empty `file_id` counts as not given (a host that injects an upload blanks the parameter the reference was in).
 - A `file_id` works only for the person whose call produced it, until it expires. An id that is unknown, expired or someone else's gets the same answer, so it never tells whether a file exists. With authentication off, everyone is the same person (`anonymous`).
 - `file_name` / `mime_type` may still be given with a `file_id`; otherwise the stored name and type are used. The usual 50 MB input limit applies.
+
+## URL inputs
+
+Every tool that takes a file also takes `url`: an http or https address Morphyard downloads the file from (and `pdf_merge` items take `{url}`). The name comes from the server's `Content-Disposition`, else the last part of the URL path, unless `file_name` is given; the format is detected as for any input. The usual input limit (`MAX_INPUT_MB`) applies.
+
+```python
+await client.call_tool("convert_document", {"url": "https://example.org/report.docx",
+                                            "target_format": "pdf", "output_name": "report"})
+```
+
+A server that fetches what a caller names can be pointed at places only the server can reach (server-side request forgery). Morphyard therefore fetches **public addresses only**, by default:
+
+- **http and https only.** `file:`, `ftp:`, `gopher:`, `data:` and the rest are refused, and so is a URL with a user name or password in it (`user:pass@host`): no credentials, cookies or proxies are ever used.
+- **Every address must be public.** The host is resolved, and if any address it resolves to is loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16, where cloud metadata lives; fe80::/10), carrier-grade NAT (100.64/10), benchmark, reserved, multicast or `0.0.0.0`, the URL is refused. IPv6 addresses that carry an IPv4 address (`::ffff:127.0.0.1`, 6to4, NAT64) are judged by that IPv4 address. Odd spellings such as `2130706433`, `0177.0.0.1` or `0x7f.1` are resolved to the address they mean and refused like it.
+- **The connection goes to the address that was checked.** The name is resolved once per connection and never again, so a DNS answer that changes between the check and the connection (DNS rebinding) cannot reach another address. TLS still checks the certificate against the host name.
+- **Redirects** are followed by hand, at most 5, and each hop is checked like the first URL; a redirect from https to http is refused.
+- **Size and time.** A `Content-Length` over the limit is refused before reading; the body is counted while it arrives, after gzip or deflate decoding, so a compressed "bomb" stops at the limit (other content codings are refused). 10 s to connect, 15 s without data, and `MORPHYARD_URL_TIMEOUT_SEC` (60 s) for the whole fetch.
+- **Own links.** A download link of this server (`<MORPHYARD_PUBLIC_URL>/files/…`) is read from the store after its signature is checked, never fetched; an expired or altered link is refused. Like the link itself, it works for anyone holding it.
+- **Logs** show the scheme, host and port of a URL, never its path or query string (presigned URLs carry secrets there).
+
+For a server on a LAN, `MORPHYARD_URL_ALLOW` opens chosen hosts: `MORPHYARD_URL_ALLOW=192.168.1.0/24,nas.lan` lets URLs reach that network and the host named `nas.lan` (exact name, any address it resolves to). Only the public-address rule is lifted: scheme, credentials, redirects, size and time limits still apply, and `0.0.0.0` and multicast are never fetched. `MORPHYARD_URL_DENY` takes the same forms and refuses them always, public addresses included; deny wins over allow. Allowing `127.0.0.0/8` lets URLs reach services on Morphyard's own machine, so think before doing it. A proxy would defeat the address check, so none is used, whatever `HTTP_PROXY` says.
 
 ## Token revocation
 

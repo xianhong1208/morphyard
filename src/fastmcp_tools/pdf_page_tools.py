@@ -29,7 +29,7 @@ logger = get_mcptools_logger()
 
 
 class MergeInput(BaseModel):
-    """One PDF to merge: the file itself or the file_id of an earlier result"""
+    """One PDF to merge: the file itself, the file_id of an earlier result, or a URL"""
 
     file_content: str | None = Field(
         default=None,
@@ -41,13 +41,18 @@ class MergeInput(BaseModel):
     file_id: str | None = Field(
         default=None,
         description="Instead of file_content: the file_id of a PDF an earlier Morphyard "
-                    "tool returned. Give either file_content or file_id, not both.")
+                    "tool returned. Give only one of file_content, file_id and url.")
+    url: str | None = Field(
+        default=None,
+        description="Instead of file_content: an http or https address to download the PDF "
+                    "from (public addresses only). Give only one of file_content, file_id "
+                    "and url.")
 
 
 def _merge_sources(kwargs: dict[str, Any], _detect: bool, owner: str) -> list[InputSource]:
     """One source per item, read in order (the first unreadable item raises)."""
     return [input_source(owner=owner, file_content=item.file_content, file_id=item.file_id,
-                         file_name=item.file_name)
+                         file_name=item.file_name, url=item.url)
             for item in kwargs.pop("files")]
 
 
