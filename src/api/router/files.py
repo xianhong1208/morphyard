@@ -19,6 +19,8 @@ from src.domain.files import get_signer, get_store
 router = APIRouter(tags=["Files"])
 
 FILES_PREFIX = "/files/"
+# Paths whose query string is a signature (downloads here, uploads in uploads.py).
+SIGNED_PREFIXES = (FILES_PREFIX, "/uploads/")
 
 _NOT_FOUND = {
     "error": "not_found",
@@ -65,12 +67,13 @@ async def download(file_id: str, name: str, request: Request):
 
 
 class _RedactFileQueries(logging.Filter):
-    """Drop the query string (the signature) of /files/ requests from uvicorn's access log."""
+    """Drop the query string (the signature) of /files/ and /uploads/ requests from uvicorn's
+    access log."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
         if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str) \
-                and args[2].startswith(FILES_PREFIX) and "?" in args[2]:
+                and args[2].startswith(SIGNED_PREFIXES) and "?" in args[2]:
             record.args = args[:2] + (args[2].split("?", 1)[0] + "?…",) + args[3:]
         return True
 

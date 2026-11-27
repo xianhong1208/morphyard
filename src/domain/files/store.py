@@ -1,8 +1,8 @@
 """Result store: files kept on the server for a short time (issue #33).
 
 A small `ResultStore` interface with one implementation, `LocalStore`, a directory on disk.
-Tools put results here (PR 3) and hand out signed download links (`links.py`); later PRs add
-uploads and job results. S3 or similar can implement the same interface without touching tools.
+Tools put results here and hand out signed download links (`links.py`); uploads
+(`uploads.py`) and files stored by `store_file` land here too, as kind "upload". S3 or similar can implement the same interface without touching tools.
 
 Layout under the store directory::
 
@@ -36,6 +36,8 @@ import shutil
 import threading
 import time
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import BinaryIO, Literal, Protocol
@@ -235,10 +237,18 @@ class LocalStore:
             self._release(okey, size)
 
     def put_file(self, owner: str, path: str | os.PathLike, *, name: str, mime: str,
-                 ttl_sec: int | None = None, kind: FileKind = "result") -> StoredFile:
+                 ttl_sec: int | None = None, kind: FileKind = "result",
+                 file_id: str | None = None, reserved_bytes: int = 0) -> StoredFile:
+        """Store a copy of the file at `path`.
+
+        `file_id`: an id handed out earlier (an upload's); it must not be in use.
+        `reserved_bytes`: room the caller already holds through `reserve()` for this owner;
+        only the part of the file beyond it is claimed here.
+        """
         okey = owner_key(owner)
         size = os.stat(path).st_size
-        self._reserve(okey, size)
+        extra = max(0, size - max(0, int(reserved_bytes)))
+        self._reserve(okey, extra)
         digest = hashlib.sha256()
 
         def copy(f):
@@ -248,7 +258,24 @@ class LocalStore:
                     f.write(chunk)
 
         try:
-            return self._write(okey, size, name, mime, ttl_sec, kind, copy, None, digest)
+            return self._write(okey, size, name, mime, ttl_sec, kind, copy, None, digest,
+                               file_id=file_id)
+        finally:
+            self._release(okey, extra)
+
+    @contextmanager
+    def reserve(self, owner: str, size: int) -> Iterator[None]:
+        """Hold room for `size` bytes of `owner`'s while a file is being received.
+
+        Raises StoreFullError at once when it does not fit (after one sweep), so an upload
+        is refused before its body is read. The room is given back when the block ends;
+        `put_file(..., reserved_bytes=size)` inside the block stores the file without
+        claiming that room a second time.
+        """
+        okey = owner_key(owner)
+        self._reserve(okey, size)
+        try:
+            yield
         finally:
             self._release(okey, size)
 
@@ -259,9 +286,17 @@ class LocalStore:
             raise ValueError("ttl_sec must be positive")
         return min(int(ttl_sec), self.default_ttl_sec, MAX_TTL_SEC)
 
-    def _write(self, okey, size, name, mime, ttl_sec, kind, fill, sha_hex, digest=None) -> StoredFile:
+    def _write(self, okey, size, name, mime, ttl_sec, kind, fill, sha_hex, digest=None,
+               file_id: str | None = None) -> StoredFile:
         ttl = self._ttl(ttl_sec)
-        file_id = new_file_id()
+        if file_id is None:
+            file_id = new_file_id()
+        elif not valid_file_id(file_id):
+            raise ValueError("not a file id")
+        else:
+            with self._lock:
+                if file_id in self._index:
+                    raise FileExistsError(file_id)
         owner_dir = self.root / okey
         owner_dir.mkdir(exist_ok=True, mode=0o700)
         tmp = owner_dir / f"{file_id}.tmp"

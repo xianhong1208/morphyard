@@ -21,6 +21,7 @@ from src.domain.files.links import (
     reconcile_store_with_key,
 )
 from src.domain.files.results import KeptFile, NewFile, keep_results
+from src.domain.files.uploads import UPLOAD_TTL_SEC, PendingUpload, Uploads, UploadNotFound, UploadUsed
 from src.domain.files.store import (
     DEFAULT_TTL_SEC,
     MAX_TTL_SEC,
@@ -48,6 +49,7 @@ class FilesRuntime:
     sweep_interval_sec: float
     result_delivery: str
     inline_max_bytes: int
+    uploads: Uploads | None = None
 
 
 _runtime: FilesRuntime | None = None
@@ -111,6 +113,7 @@ def init_files(config, env_refs: dict | None = None) -> FilesRuntime:
     _runtime = FilesRuntime(
         store=store, signer=signer, sweep_interval_sec=files.sweep_interval_sec,
         result_delivery=files.result_delivery, inline_max_bytes=int(files.inline_max_mb * _MB),
+        uploads=Uploads(data_dir / "uploads", signer),
     )
     return _runtime
 
@@ -139,11 +142,17 @@ def files_status() -> dict:
     return {"enabled": True, **_runtime.store.stats()}
 
 
-async def sweep_loop(store: LocalStore, interval_sec: float) -> None:
+def _sweep(runtime: FilesRuntime) -> None:
+    runtime.store.sweep()
+    if runtime.uploads is not None:
+        runtime.uploads.sweep()
+
+
+async def sweep_loop(runtime: FilesRuntime, interval_sec: float) -> None:
     while True:
         await asyncio.sleep(interval_sec)
         try:
-            await asyncio.to_thread(store.sweep)
+            await asyncio.to_thread(_sweep, runtime)
         except Exception as e:  # pragma: no cover - defensive: the loop must survive
             logger.warning(f"File store sweep failed: {e}")
 
@@ -155,8 +164,8 @@ async def files_lifespan():
     if runtime is None:
         yield
         return
-    await asyncio.to_thread(runtime.store.sweep)
-    task = asyncio.create_task(sweep_loop(runtime.store, runtime.sweep_interval_sec))
+    await asyncio.to_thread(_sweep, runtime)
+    task = asyncio.create_task(sweep_loop(runtime, runtime.sweep_interval_sec))
     try:
         yield
     finally:
@@ -168,7 +177,8 @@ async def files_lifespan():
 
 
 __all__ = [
-    "DEFAULT_TTL_SEC", "MAX_TTL_SEC", "FilesRuntime", "KeptFile", "LinkSigner", "LocalStore", "ResultStore",
+    "DEFAULT_TTL_SEC", "MAX_TTL_SEC", "UPLOAD_TTL_SEC", "FilesRuntime", "PendingUpload", "Uploads",
+    "UploadNotFound", "UploadUsed", "KeptFile", "LinkSigner", "LocalStore", "ResultStore",
     "SigningKeyError", "StoreFullError", "StoredFile", "SweepResult", "files_lifespan",
     "files_status", "get_runtime", "get_signer", "get_store", "init_files", "keep_results", "NewFile", "owner_key",
     "resolve_public_url", "safe_mime", "safe_name", "set_runtime", "valid_file_id",

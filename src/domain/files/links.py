@@ -76,6 +76,34 @@ class LinkSigner:
         return int(exp) > (time.time() if now is None else now)
 
 
+    # ------------------------------------------------------------------ uploads (issue #36)
+    #   PUT {public_url}/uploads/{file_id}?exp=<unix seconds>&max=<bytes>&sig=<base64url>
+    #   sig = HMAC-SHA256(key, "v1|PUT|{file_id}|{exp}|{max}")
+    # "PUT" in the message keeps a download signature from ever passing as an upload one.
+
+    def upload_signature(self, file_id: str, exp: int, max_bytes: int) -> str:
+        msg = f"v1|PUT|{file_id}|{int(exp)}|{int(max_bytes)}".encode("utf-8")
+        return _b64(hmac.new(self._key, msg, hashlib.sha256).digest())
+
+    def upload_url(self, file_id: str, exp: float, max_bytes: int) -> str:
+        exp = int(exp)
+        sig = self.upload_signature(file_id, exp, max_bytes)
+        return f"{self.public_url}/uploads/{file_id}?exp={exp}&max={int(max_bytes)}&sig={sig}"
+
+    def verify_upload(self, file_id: str, exp: object, max_bytes: object, sig: object,
+                      now: float | None = None) -> bool:
+        """True when `sig` signs this upload URL and `exp` has not passed."""
+        if not isinstance(sig, str):
+            return False
+        for value in (exp, max_bytes):
+            if not isinstance(value, str) or not value.isdigit() or len(value) > 12:
+                return False
+        expected = self.upload_signature(file_id, int(exp), int(max_bytes))
+        if not hmac.compare_digest(expected.encode("ascii"), sig.encode("utf-8", "replace")):
+            return False
+        return int(exp) > (time.time() if now is None else now)
+
+
 def key_fingerprint(key: bytes) -> str:
     return hashlib.sha256(b"morphyard-signing-key-id|" + key).hexdigest()[:16]
 

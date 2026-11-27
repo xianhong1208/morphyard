@@ -566,7 +566,7 @@ def test_job_tools_tell_models_to_poll():
     described = asyncio.run(tools())
     for name, text in described.items():
         if name in ("list_supported_conversions", "inspect_document", "pdf_metadata",
-                    "job_status", "job_cancel", "job_list"):
+                    "job_status", "job_cancel", "job_list", "store_file", "create_upload"):
             assert operation_tool.JOB_HINT not in text, name
         else:
             assert f"\n\n{operation_tool.JOB_HINT}" in text, name

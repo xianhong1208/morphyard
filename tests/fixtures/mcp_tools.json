@@ -881,15 +881,15 @@
   {
     "name": "pdf_merge",
     "title": "Pdf Merge",
-    "description": "Merge several PDFs into one PDF, in the given order.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nPass every PDF yourself as base64 in `files`, or the file_id of a PDF an\nearlier Morphyard tool returned (this tool does not use the single\nfile_content upload slot of the other tools). If you only hold an upload\nreference and cannot pass the bytes, tell the user merging needs the files\nthemselves. Encrypted PDFs are refused: remove their password first.",
+    "description": "Merge several PDFs into one PDF, in the given order.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nPass the PDFs in `files`, each as a file_id or as base64 in file_content.\nThis tool has no single file_content upload slot: when the user's PDFs are\nupload references (e.g. [Uploaded Artifact: \"a.pdf\"]), call store_file once\nper upload with the reference in its file_content, collect the file_ids it\nreturns, then call this tool with files=[{\"file_id\": ...}, ...] in the\norder wanted. Encrypted PDFs are refused: remove their password first.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "files": {
-          "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item carries one PDF as base64 in file_content plus its file_name, or the file_id of a PDF an earlier Morphyard tool returned. 2 to 20 files, at most 50 MB together.",
+          "description": "The PDFs to merge, in the order they should appear: the first item's pages come first. Each item is one PDF: its file_id ('f_...', from store_file, create_upload or an earlier Morphyard tool), or the PDF itself as base64 in file_content plus its file_name. The file name (or the stored name) becomes that file's bookmark. 2 to 20 files, at most 50 MB together.",
           "items": {
-            "description": "One PDF to merge: the file itself or the file_id of an earlier result",
+            "description": "One file: the file itself, or the file_id of a file kept on the server",
             "properties": {
               "file_content": {
                 "anyOf": [
@@ -901,7 +901,7 @@
                   }
                 ],
                 "default": null,
-                "description": "The PDF itself, base64-encoded. Leave empty when file_id is given."
+                "description": "The file itself, base64-encoded. Leave empty when file_id is given."
               },
               "file_name": {
                 "anyOf": [
@@ -913,7 +913,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Its file name, e.g. 'Chapter 1.pdf'. Used as the bookmark title for this file in the merged PDF (default: the stored name for a file_id)."
+                "description": "Its file name with extension, e.g. 'Chapter 1.pdf' (default: the stored name for a file_id)."
               },
               "file_id": {
                 "anyOf": [
@@ -925,7 +925,7 @@
                   }
                 ],
                 "default": null,
-                "description": "Instead of file_content: the file_id of a PDF an earlier Morphyard tool returned. Give either file_content or file_id, not both."
+                "description": "Instead of file_content: the file_id ('f_...') of a file kept on the server: a result of an earlier Morphyard tool, a file stored with store_file, or an upload made with create_upload. Give either file_content or file_id, not both."
               }
             },
             "type": "object"
@@ -1461,7 +1461,7 @@
   {
     "name": "images_to_pdf",
     "title": "Images To Pdf",
-    "description": "Combine images into one PDF, one image per page.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nThe uploaded file is either one image (PNG, JPEG, WebP, TIFF, GIF, BMP;\nevery page of a multi-page TIFF becomes a page, GIF / WebP animations\ngive their first frame) or a ZIP of images. Only one file can be passed\nper call, so for several images ask the user to put them in a ZIP: the\npages follow the file names in natural order (page2 before page10), and\nfiles that are not images are skipped and listed. Photos are turned\nupright from their EXIF orientation, transparency becomes white, and\nJPEGs are embedded unchanged (no quality loss).",
+    "description": "Combine images into one PDF, one image per page.\n\nLong conversions continue in the background: when the reply says the work is still running and gives a job_id, call job_status with that job_id to get the result (do not call this tool again for the same file).\n\nPass several images in `files` (one page each, in the order given), or\none file in file_content / file_id: an image (PNG, JPEG, WebP, TIFF, GIF,\nBMP; every page of a multi-page TIFF becomes a page, GIF / WebP\nanimations give their first frame) or a ZIP of images, whose pages follow\nthe file names in natural order (page2 before page10; files that are not\nimages are skipped and listed). When the user's images are upload\nreferences (e.g. [Uploaded Artifact: \"a.jpg\"]), call store_file once per\nupload with the reference in its file_content, then pass the file_ids in\nfiles. Photos are turned upright from their EXIF orientation,\ntransparency becomes white, and JPEGs are embedded unchanged (no quality\nloss).",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1535,8 +1535,152 @@
           ],
           "default": null,
           "description": "Instead of file_content: the file_id of a file an earlier Morphyard tool returned (e.g. 'f_...'), to work on that result without passing it back. Give either file_content or file_id, not both. Never put an upload reference here; that goes in file_content."
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "description": "One file: the file itself, or the file_id of a file kept on the server",
+                "properties": {
+                  "file_content": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The file itself, base64-encoded. Leave empty when file_id is given."
+                  },
+                  "file_name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Its file name with extension, e.g. 'Chapter 1.pdf' (default: the stored name for a file_id)."
+                  },
+                  "file_id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Instead of file_content: the file_id ('f_...') of a file kept on the server: a result of an earlier Morphyard tool, a file stored with store_file, or an upload made with create_upload. Give either file_content or file_id, not both."
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Several images, one page each, in the order given: each item is an image's file_id ('f_...', from store_file, create_upload or an earlier Morphyard tool), or the image itself as base64 in file_content plus its file_name. Use instead of file_content / file_id. 1 to 20 images."
         }
       }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "store_file",
+    "title": "Store File",
+    "description": "Keep one uploaded file on the server and get its file_id, without converting it.\n\nUse it to give a Morphyard tool several uploaded files when each upload can only\nbe passed in a single file_content: call store_file once per file (put the upload\nreference, e.g. [Uploaded Artifact: \"a.pdf\"], in file_content), collect the\nfile_ids, then pass them all at once, e.g. pdf_merge or images_to_pdf with\nfiles=[{\"file_id\": \"f_...\"}, {\"file_id\": \"f_...\"}]. Any tool also takes a single\nfile_id instead of file_content. The file is kept as it is, for you only, for a\nlimited time (the reply says until when).",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file uploaded by the user. If you see a reference such as [Uploaded Artifact: \"xxx\"], put it in this parameter; the host replaces it with the actual file content automatically."
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Original file name (with extension). Filled in by the host automatically; you do not need to set it. Never put an upload reference here."
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (optional, usually empty)"
+        }
+      }
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "create_upload",
+    "title": "Create Upload",
+    "description": "Get a single-use URL to upload one file to, and the file_id it will have.\n\nFor clients, scripts and people that can send an HTTP request (e.g. `curl -T\n<file> '<url>'`): sending the file's raw bytes with PUT to the URL stores it,\nand the file_id then works as input to any Morphyard tool (file_id, or an item\nof files in pdf_merge / images_to_pdf), with no base64 through the conversation.\nThe URL works once and expires after 15 minutes. If you only hold an upload\nreference such as [Uploaded Artifact: \"a.pdf\"], use store_file instead.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_name": {
+          "description": "The name of the file that will be uploaded, with extension, e.g. 'scan 1.pdf'. The stored file keeps this name.",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The file's size in bytes, if known: the upload URL then accepts at most that many bytes. Default: the server's input limit."
+        }
+      },
+      "required": [
+        "file_name"
+      ]
     },
     "_meta": {
       "fastmcp": {

@@ -7,8 +7,8 @@ page images into the model's context. A ZIP is opaque to the model and is one
 download for the user, with the pages named in order. A single page comes back as
 the image itself. The ZIP is also what images_to_pdf takes back.
 
-Why images_to_pdf takes a ZIP for several images: the host injects one file per
-call. Several files in one call come with 1.4.
+images_to_pdf takes several images as several inputs (the tool's `files`), or one image,
+or a ZIP of images (for hosts that pass one file per call).
 """
 
 from typing import Annotated
@@ -131,22 +131,41 @@ class ImagesToPdfArgs(_Args):
                     "0 for 'fit', 10 for a4 / letter")] = None
 
 
+def _is_pdf(raw: bytes) -> bool:
+    return raw.lstrip()[:5] == b"%PDF-"
+
+
+def _image_label(position: int, source) -> str:
+    return (source.file_name or "").strip() or f"image {position}"
+
+
 async def _images_to_pdf(call: OpCall) -> OpResult:
     source, a = call.inputs[0], call.args
-    raw = source.data
-    if raw.lstrip()[:5] == b"%PDF-":
-        raise OperationRefused("This is already a PDF; nothing to combine.")
-
-    src = "zip" if raw.startswith(b"PK\x03\x04") else "image"
+    if len(call.inputs) == 1:
+        raw = source.data
+        if _is_pdf(raw):
+            raise OperationRefused("This is already a PDF; nothing to combine.")
+        src = "zip" if raw.startswith(b"PK\x03\x04") else "image"
+        data: bytes | list[tuple[str, bytes]] = raw
+    else:
+        # Several files: one page per image, in the order given.
+        for position, item in enumerate(call.inputs, start=1):
+            if _is_pdf(item.data):
+                raise OperationRefused(
+                    f"File #{position} in files ({_image_label(position, item)}) is a PDF, "
+                    "not an image. To combine PDFs use pdf_merge.")
+        src = "image"
+        data = [(_image_label(position, item), item.data)
+                for position, item in enumerate(call.inputs, start=1)]
     pdf_images.validate_layout(a.page_size, a.orientation, a.margin_mm, src)
     async with conversion_slot():
-        built = await pdf_images.build_pdf(raw, a.page_size, a.orientation, a.margin_mm, src)
+        built = await pdf_images.build_pdf(data, a.page_size, a.orientation, a.margin_mm, src)
 
     name = source.name
     summary: list[str] = [
         f"Created a {built.pages}-page PDF ({len(built.data) / 1024:.1f} KB)"
-        + (f" from {', '.join(built.labels)}" if src == "zip" and built.pages <= 20
-           else "") + "."
+        + (f" from {', '.join(built.labels)}"
+           if (src == "zip" or len(call.inputs) > 1) and built.pages <= 20 else "") + "."
     ]
     if built.passed_through:
         summary.append(f"{built.passed_through} JPEG image(s) were embedded unchanged.")
@@ -161,9 +180,9 @@ async def _images_to_pdf(call: OpCall) -> OpResult:
 
 register(Operation(
     name="images_to_pdf",
-    title="Combine images (one image, or a ZIP of images) into one PDF",
+    title="Combine images (several images, one image, or a ZIP of images) into one PDF",
     args_model=ImagesToPdfArgs,
-    arity=Arity.ONE_TO_ONE,
+    arity=Arity.MANY_TO_ONE,
     run=_images_to_pdf,
     # Read as raw bytes: a ZIP of images is not a format the detector knows, so
     # the format is checked by the operation itself (a PDF is refused).

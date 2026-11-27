@@ -54,8 +54,9 @@ convert:
   max_queued_conversions: ${MORPHYARD_MAX_QUEUED_CONVERSIONS:-}           # empty = 4 x the limit; 0 = no queue
   queue_timeout_sec: ${MORPHYARD_QUEUE_TIMEOUT:-30}                       # longest wait for a slot, seconds
 
-# Files kept on the server for a short time (results now; uploads and job outputs later),
+# Files kept on the server for a short time (results, job outputs, store_file files and uploads),
 # handed out as signed download links: <public_url>/files/<id>/<name>?exp=...&sig=...
+# Uploads go to signed single-use URLs from the create_upload tool: <public_url>/uploads/<id>?...
 # Anyone holding a link can download the file until it expires. When a cap is reached, new
 # files are refused; files that have not expired are never deleted to make room.
 files:

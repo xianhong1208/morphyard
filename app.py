@@ -147,7 +147,7 @@ def create_app(config: BaseModel, transport: str):
     # --- MCP Gate revocation feed: built here, polled for the app's lifetime (no-op when off) ---
     init_revocation(config, env_refs=Config.get_env_refs())
 
-    # --- Stored files + signed download links (raises on an unusable signing key) ---
+    # --- Stored files + signed download and upload links (raises on an unusable signing key) ---
     init_files(config, env_refs=Config.get_env_refs())
 
     # --- Jobs: conversions that outlive their call (in memory) ---
@@ -223,6 +223,10 @@ def create_app(config: BaseModel, transport: str):
     # --- Signed download links for stored files ---
     from src.api.router.files import router as files_router
     fastapi_app.include_router(files_router)
+
+    # --- Signed single-use upload URLs (made by the create_upload tool) ---
+    from src.api.router.uploads import router as uploads_router
+    fastapi_app.include_router(uploads_router)
 
     # --- OAuth discovery for clients that probe the root / legacy well-known paths ---
     if fastapi_app.state.auth_settings is not None:

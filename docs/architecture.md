@@ -33,16 +33,20 @@ src/
 │   └── sources.py            Lazy input sources: file_content (base64 / text) or a stored file_id (owner-checked)
 ├── domain/files/
 │   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
-│   ├── links.py            HMAC-signed expiring download links, signing key, key/store reconciliation
-│   └── results.py          keep_results(): store a result's files all-or-nothing and sign their links
+│   ├── links.py            HMAC-signed expiring download and upload links, signing key, key/store reconciliation
+│   ├── results.py          keep_results(): store a result's files all-or-nothing and sign their links
+│   └── uploads.py          pending single-use uploads (in memory) for create_upload
 ├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
+├── api/router/uploads.py   PUT /uploads/<id>?exp&max&sig (signature-only, size cap on the stream, owner quota)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
 └── fastmcp_tools/          MCP tool layer: thin wrappers over the operations
     ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape and delivery
     ├── morphyard_tools.py     register_morphyard_tools(); conversion and basic PDF tools
     ├── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
     ├── pdf_page_tools.py      pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
-    └── pdf_image_tools.py     pdf_to_images / images_to_pdf
+    ├── pdf_image_tools.py     pdf_to_images / images_to_pdf
+    ├── file_inputs.py         FileInput and the `files` parameter (pdf_merge, images_to_pdf)
+    └── upload_tools.py        store_file / create_upload
 ```
 
 Dependencies point strictly downward. The tool layer never touches engines; it resolves the uploaded file(s) through `service.py` and runs an operation from the registry (see [Operations registry](#operations-registry)). `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
@@ -105,7 +109,7 @@ mime_type:    Optional[str]
 
 The names are part of the public contract and must not change. Hosts that inject uploaded files match on these exact names.
 
-Every tool that takes a file also accepts `file_id: Optional[str]` after these three: a file in the store (a result an earlier call returned), read through the same lazy input sources (`src/domain/operations/sources.py`) and held to the same size limit and format detection. One of `file_content` / `file_id` must be given, not both; an empty string counts as absent, because a host that injects an upload blanks the parameter the model put the reference in. A `file_id` is owner-checked against the caller (the token's `sub`; `anonymous` without auth), and an unknown, expired or foreign id all raise the same `file_not_found` error. `pdf_merge` items take `file_id` the same way.
+Every tool that takes a file also accepts `file_id: Optional[str]` after these three: a file in the store (a result an earlier call returned), read through the same lazy input sources (`src/domain/operations/sources.py`) and held to the same size limit and format detection. One of `file_content` / `file_id` must be given, not both; an empty string counts as absent, because a host that injects an upload blanks the parameter the model put the reference in. A `file_id` is owner-checked against the caller (the token's `sub`; `anonymous` without auth), and an unknown, expired or foreign id all raise the same `file_not_found` error. `pdf_merge` and `images_to_pdf` take `files`, a list of `FileInput` items (`file_content` + `file_name`, or `file_id`; `src/fastmcp_tools/file_inputs.py`), checked item by item before anything is read; errors name the item. A host that injects one upload per call stores each upload with `store_file` and passes the `file_id`s.
 
 ### Output
 
