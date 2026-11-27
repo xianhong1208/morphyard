@@ -5,6 +5,7 @@ its model here and add it to ConfigModel.
 """
 
 
+import os
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -94,6 +95,90 @@ class ConvertConfig(BaseModel):
         return None if v is None or (isinstance(v, str) and not v.strip()) else v
 
 
+class FilesConfig(BaseModel):
+    """Files kept on the server and their download links (`files:`, issue #33).
+
+    Results (and, later, uploads and job outputs) are stored under `data_dir/store` for
+    `ttl_sec` and handed out as signed, expiring links under `public_url`. When a store cap is
+    reached new files are refused; unexpired files are never evicted.
+    """
+    # Directory for the store and the generated signing key (Docker: the /app/data volume).
+    # config.yaml sets it; the fallback reads the same variable for configs built in code.
+    data_dir: str = Field(default_factory=lambda: os.environ.get("MORPHYARD_DATA_DIR") or "./data")
+    # Address people's browsers and agents reach this server at; empty = auth.base_url.
+    public_url: str | None = None
+    # Must be an ${ENV_VAR} reference (MORPHYARD_SIGNING_KEY); empty = generated into data_dir.
+    signing_key: str | None = Field(None, repr=False)
+    ttl_sec: int = Field(3600, gt=0, le=24 * 3600)
+    max_total_mb: int = Field(2048, gt=0)
+    max_per_owner_mb: int = Field(512, gt=0)
+    sweep_interval_sec: float = Field(60, ge=1, le=3600)
+    # How tools return files (used from the results-as-links change on):
+    #   auto   = link, plus base64 inline when the file is at most inline_max_mb (default)
+    #   inline = base64 only, as in 1.3;  both = always link and base64;  link = link only
+    result_delivery: Literal["auto", "inline", "both", "link"] = "auto"
+    inline_max_mb: float = Field(10, ge=0)
+
+    @field_validator("public_url", "signing_key", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v):
+        return None if v is None or (isinstance(v, str) and not v.strip()) else v
+
+    @field_validator("result_delivery", mode="before")
+    @classmethod
+    def _lower(cls, v):
+        return v.strip().lower() if isinstance(v, str) else v
+
+
+class JobsConfig(BaseModel):
+    """Conversions as jobs (`jobs:`, issue #34).
+
+    A tool call waits up to `wait_sec` for its conversion; one that takes longer answers with
+    a job id, and `job_status` (which waits up to `wait_sec` per call too) returns the result.
+    Jobs live in memory: a restart loses them. A finished job is kept as long as files are
+    (`files.ttl_sec`).
+    """
+    # Wait inside a call before answering with a job id, and the longest job_status wait.
+    # Keep it below the clients' own timeouts (Claude Code backgrounds a call at ~120 s).
+    wait_sec: float = Field(20, gt=0, le=120)
+    # Jobs queued or running at once, per person (token `sub`; everyone without auth).
+    max_per_owner: int = Field(5, gt=0)
+    # Jobs queued or running at once on the whole server.
+    max_active: int = Field(64, gt=0)
+    # A job is stopped after this long, its wait in the queue included.
+    max_sec: float = Field(1800, gt=0)
+
+
+class FetchConfig(BaseModel):
+    """URL inputs (`fetch:`, issue #35): tools can take a file by its http(s) address.
+
+    Only public addresses are fetched; `allow` lists LAN networks (CIDR) and exact host names
+    that may be reached anyway, `deny` lists networks and host names that never are (deny wins).
+    Both are comma lists in the environment (MORPHYARD_URL_ALLOW / MORPHYARD_URL_DENY).
+    """
+    enabled: bool = True
+    allow: list[str] = []
+    deny: list[str] = []
+    # The whole fetch, redirects included. Connect (10 s) and idle (15 s) limits are fixed.
+    timeout_sec: float = Field(60, gt=0, le=600)
+
+    @field_validator("allow", "deny", mode="before")
+    @classmethod
+    def _comma_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+    @field_validator("allow", "deny")
+    @classmethod
+    def _valid_entries(cls, v, info):
+        from src.domain.fetch.policy import parse_entries
+        parse_entries(v, f"MORPHYARD_URL_{info.field_name.upper()}")
+        return v
+
+
 class AppConfig(BaseModel):
     """Application metadata."""
     name: str = "MyMCP"
@@ -159,6 +244,9 @@ class ConfigModel(BaseModel):
     logging: LoggingConfig
     app: AppConfig | None = None
     convert: ConvertConfig = ConvertConfig()
+    files: FilesConfig = Field(default_factory=FilesConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
+    fetch: FetchConfig = Field(default_factory=FetchConfig)
     modules: ModulesConfig
 
 
@@ -167,6 +255,9 @@ __all__ = [
     "AuthConfig",
     "ConfigModel",
     "ConvertConfig",
+    "FetchConfig",
+    "FilesConfig",
+    "JobsConfig",
     "LoggingConfig",
     "McpPromptsConfig",
     "McpResourcesConfig",

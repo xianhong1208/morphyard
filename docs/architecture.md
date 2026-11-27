@@ -12,6 +12,8 @@ src/
 │   ├── service.py          base64 input → planned path → output
 │   ├── pdfops.py           PDF-only operations (split / extract / rotate / encrypt / images)
 │   ├── pdf_secure.py       pikepdf: compress / protect + permissions / unlock / metadata
+│   ├── pdf_pages.py        merge / delete / reorder / watermark / page numbers
+│   ├── pdf_images.py       PDF pages → images, images → PDF
 │   └── engines/
 │       ├── base.py           Engine interface, subprocess execution with timeout, temporary workspace
 │       ├── discovery.py      Cross-platform executable lookup (PATH plus known install locations)
@@ -21,13 +23,36 @@ src/
 │       ├── ocr.py            Image / scanned PDF → text (Tesseract)
 │       ├── image.py          Image ↔ image (Pillow)
 │       └── text.py           JSON / XML / TSV → Markdown
+├── domain/operations/      Operations registry: one entry per tool (arguments, arity, formats, the work)
+│   ├── base.py               Operation, Arity, Artifact, OpResult, execute(), get_operation(), list_operations()
+│   ├── convert_ops.py        list_supported_conversions / inspect_document / convert_document / extract_text
+│   ├── pdf_basic_ops.py      pdf_extract_pages / pdf_split / pdf_rotate
+│   ├── pdf_secure_ops.py     pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+│   ├── pdf_page_ops.py       pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
+│   ├── pdf_image_ops.py      pdf_to_images / images_to_pdf
+│   └── sources.py            Lazy input sources: file_content (base64 / text), a stored file_id (owner-checked) or a url
+├── domain/fetch/            URL inputs (#35)
+│   ├── policy.py             Which addresses may be reached: public only, allow/deny lists, IPv6-embedded IPv4
+│   └── fetcher.py            Guarded fetch: pinned connection (resolve once, connect to the checked IP), manual redirects, size/time caps, own links from the store
+├── domain/files/
+│   ├── store.py            ResultStore interface + LocalStore (per-owner dirs, TTL, caps, sweep)
+│   ├── links.py            HMAC-signed expiring download and upload links, signing key, key/store reconciliation
+│   ├── results.py          keep_results(): store a result's files all-or-nothing and sign their links
+│   └── uploads.py          pending single-use uploads (in memory) for create_upload
+├── api/router/files.py     GET/HEAD /files/<id>/<name>?exp&sig (signature-only, same 404 for every refusal)
+├── api/router/uploads.py   PUT /uploads/<id>?exp&max&sig (signature-only, size cap on the stream, owner quota)
 ├── auth/                   OAuth 2.1 resource-server wiring (JWKS verification, revocation feed)
-└── fastmcp_tools/
-    ├── morphyard_tools.py     MCP tool layer
-    └── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+└── fastmcp_tools/          MCP tool layer: thin wrappers over the operations
+    ├── operation_tool.py      add_operation_tool(): signature from the operation's model, inputs, reply shape and delivery
+    ├── morphyard_tools.py     register_morphyard_tools(); conversion and basic PDF tools
+    ├── pdf_secure_tools.py    pdf_compress / pdf_protect / pdf_unlock / pdf_metadata / pdf_strip_metadata
+    ├── pdf_page_tools.py      pdf_merge / pdf_delete_pages / pdf_reorder_pages / pdf_watermark / pdf_page_numbers
+    ├── pdf_image_tools.py     pdf_to_images / images_to_pdf
+    ├── file_inputs.py         FileInput and the `files` parameter (pdf_merge, images_to_pdf)
+    └── upload_tools.py        store_file / create_upload
 ```
 
-Dependencies point strictly downward. The tool layer never touches base64 payloads or engines; it talks only to `service.py`. `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
+Dependencies point strictly downward. The tool layer never touches engines; it resolves the uploaded file(s) through `service.py` and runs an operation from the registry (see [Operations registry](#operations-registry)). `registry.py` is the single place that declares what the service can do: every route the capability matrix advertises is a row in its table, and `plan_conversion()` consults nothing else.
 
 ## Engines
 
@@ -87,11 +112,26 @@ mime_type:    Optional[str]
 
 The names are part of the public contract and must not change. Hosts that inject uploaded files match on these exact names.
 
+Every tool that takes a file also accepts `file_id: Optional[str]` after these three: a file in the store (a result an earlier call returned), read through the same lazy input sources (`src/domain/operations/sources.py`) and held to the same size limit and format detection. One of `file_content` / `file_id` must be given, not both; an empty string counts as absent, because a host that injects an upload blanks the parameter the model put the reference in. A `file_id` is owner-checked against the caller (the token's `sub`; `anonymous` without auth), and an unknown, expired or foreign id all raise the same `file_not_found` error. `pdf_merge` and `images_to_pdf` take `files`, a list of `FileInput` items (`file_content` + `file_name`, or `file_id`; `src/fastmcp_tools/file_inputs.py`), checked item by item before anything is read; errors name the item. A host that injects one upload per call stores each upload with `store_file` and passes the `file_id`s.
+
+After `file_id` comes `url: Optional[str]` (#35): an http(s) address, fetched by `src/domain/fetch/` when `execute()` resolves the input (a source may be async). Only one of `file_content` / `file_id` / `url` may be given. The fetch goes through `PinnedBackend`, an `httpcore.AsyncNetworkBackend` whose `connect_tcp` resolves the host once, judges every address with `AddressPolicy` and connects to the judged IP literal (TLS keeps the host name for SNI and certificate checks), so a second DNS answer is never used. Redirects are followed by hand and every hop goes through the same checks. The body is read with httpcore (no automatic decoding) and gzip/deflate are decoded in steps bounded by the size left under `MAX_INPUT_MB`. A URL on this server's own `/files/` path is read from the store after its signature check. The fetch runs inside the job before the operation takes a conversion slot, so a slow server holds no slot.
+
 ### Output
 
 File-producing tools return `[summary text, File(...)]`, where `File` comes from `fastmcp.utilities.types`. On the wire the `File` is serialised as an MCP `EmbeddedResource`: the bytes are base64 in `block.resource.blob`, not in `block.data` (that field is used only by `ImageContent`).
 
-Tools that return a list must be declared with `@mcp.tool(output_schema=None)`. FastMCP otherwise derives an `outputSchema` from the `-> list` annotation and demands structured output, and clients receive `Output validation error: outputSchema defined but no structured output returned`. The tool functions themselves return normally; the error only appears when a real MCP client calls the server, which is why `scripts/mcp_smoke.py` exists.
+Since 1.4 the result files also go into the store (`keep_results`, all or nothing) and the reply is shaped by `files.result_delivery` (`operation_tool.deliver_files`):
+
+| Mode | Reply |
+|---|---|
+| `inline` | `[summary, File, …]` — exactly 1.3; nothing stored |
+| `auto` (default) | `[summary + links, File (only those ≤ inline_max_mb), …, ResourceLink, …]` |
+| `both` | `[summary + links, File, …, ResourceLink, …]` |
+| `link` | `[summary + links, ResourceLink, …]` |
+
+The `File` blocks are the 1.3 blocks byte for byte and come first, so a host that turns an inline file into an artifact sees what it always saw; the `ResourceLink`s follow. "links" is a text block appended to the summary: per file the name, size, `file_id` and signed URL (marked "link only" when the file is not inline), the expiry, and a hint to pass the `file_id` on — the URL has to be in the text because Claude Code ignores `resource_link`. A full store raises a tool error naming the limit and the retry time. Without a store runtime (tests that register tools alone) the reply is the `inline` one. Report tools and answers without a file are unchanged, and the tools' `outputSchema`s are unchanged (file tools still declare none).
+
+Tools that return a list must be declared with `@mcp.tool(output_schema=None)`. FastMCP otherwise derives an `outputSchema` from the `-> list` annotation and demands structured output, and clients receive `Output validation error: outputSchema defined but no structured output returned`. The tool functions themselves return normally; the error only appears when a real MCP client calls the server, which is why `scripts/mcp_smoke.py` exists. `add_operation_tool()` declares it for every tool whose reply is a list.
 
 ### Hosts that inject uploaded files (artifact injection)
 
@@ -150,6 +190,42 @@ Measured result: sixteen formats are recognised correctly with neither `file_nam
 
 `convert_document` returns a file; `extract_text` returns text. The guidance that tells a model which to choose lives in `config/instructions.md`.
 
+## Operations registry
+
+Every tool is backed by one `Operation` in `src/domain/operations/`, and the registry is the single source of truth for what a tool takes and does:
+
+| Field | Meaning |
+|---|---|
+| `name` | The tool name (and the pipeline step name) |
+| `args_model` | Pydantic model of the tool's own arguments: names, types, defaults, descriptions. The input file parameters are not in it |
+| `arity` | `many_to_one` (`pdf_merge`), `one_to_one` (most), `one_to_many` (`pdf_split`), `one_to_report` (`inspect_document`, `extract_text`, `pdf_metadata`), `none_to_report` (`list_supported_conversions`); `arity.produces_files` is false for the report kinds |
+| `input_formats` / `output_formats` | Accepted and produced formats (`None` = any detectable input / chosen by the arguments, as for `convert_document`) |
+| `prepare` | Checks of the arguments alone, run before any input is read (a bad option is answered at once, even when the server is busy, and a pipeline checks every step with it before running) |
+| `outputs_for` | Optional: the formats produced for given arguments, when `output_formats` depends on them (`convert_document`: the target format); used by the pipeline's format check |
+| `min_inputs` | The fewest files a `many_to_one` operation takes (`pdf_merge`: 2) |
+| `run` | `OpCall` (resolved `Artifact`s, validated arguments, what `prepare` built, a `notify` callback) → `OpResult` (summary, `OutputFile`s, or a report) |
+
+`execute(op, args, sources, notify=None)` is the one path that runs an operation: start message → `prepare` → each input resolved and format-checked in turn (`sources` are callables, so where the bytes come from is the caller's business) → `run`. An input of the wrong format, or a request the operation declines with a plain answer, raises `OperationRefused`. Operations take the conversion slot themselves, around the engine work only. `get_operation(name)`, `list_operations()` and `Operation.describe()` let callers introspect it; `Operation.parse_args()` validates an argument dict (unknown arguments are refused).
+
+The MCP tools are built from it by `add_operation_tool()`: the tool's parameters are generated from `args_model`, with the input parameters (the `file_content` triple, or `pdf_merge`'s `files`) inserted where each tool has always had them; a call resolves the inputs, runs `execute()` and shapes the reply the way that tool always replied (`[summary, file, ...]`; plain text for the `pdf_secure` tools when there is no file; the report for report tools; a refusal as `[message]`, plain text or `{"error": message}`). `tests/test_tool_contract.py` compares the whole tool list, parameter order included, with `tests/fixtures/mcp_tools.json`.
+
+## Jobs
+
+`src/domain/jobs.py` (issue #34) runs every operation that takes a conversion slot as a job: a task of its own in a process-wide `JobRegistry`, owned by the caller's `sub`. `operation_tool.run_as_job()` submits it and waits up to `jobs.wait_sec`; a job that finishes in time goes through the same `Reply.success` as before and is discarded, so a quick call is unchanged. Otherwise the registry is told the caller left (`detach`), the tool answers with a handle, and when the job ends its result is kept (`KeptResult`: files in the store, text in memory) for `job_status`, which rebuilds the reply under the delivery mode. A failed job keeps its exception and `job_status` raises it again.
+
+- **Slots:** the job's task runs inside `limiter.waiting_as_job(job)`, so `conversion_slot()` waits without the queue timeout (`acquire(timeout=None)`) and tells the job when it starts waiting and when it gets its slot (`queued` / `running`, `position_of()` for the queue place). The queue's length limit still refuses at once.
+- **Progress:** each operation message (`OpCall.say`) and each queue/start step is an `Event` on the job; a waiting call (the original or `job_status`) passes new events on as `notifications/progress` (`Context.report_progress`, a no-op without a progressToken) and, for `convert_document`, as log messages as before.
+- **Cancel:** `task.cancel()`; `CliEngine._run_command` kills the engine's process group on cancellation, and the `async with conversion_slot()` releases the slot. Work in a thread (pikepdf, Pillow, pypdf) cannot be interrupted: it finishes in the background and its result is dropped.
+- **Limits:** per owner and in all at submission, `max_sec` with `asyncio.timeout` around the whole job; finished jobs are pruned lazily after `keep_sec` (the file TTL). In memory only: a restart loses jobs.
+
+## Pipelines
+
+`src/domain/operations/pipeline.py` (issue #37) runs several operations in a row; `src/fastmcp_tools/pipeline_tool.py` is the `pipeline` MCP tool around it.
+
+- **Plan first.** `plan(steps, input_count)` checks the whole pipeline before any input is read: 1–10 steps; each `tool` is a registered operation whose arity produces files; no file parameter in `args`; `args` through `Operation.parse_args()` and `prepare`; file counts simulated through the arities (`count` known or "several" after a `one_to_many`) against `min_inputs`; formats simulated through `output_formats` / `outputs_for` against the next step's `input_formats` (unknown before the first step). Every refusal is a `PipelineError` (`pipeline_invalid`) naming the step.
+- **Run.** `run(planned, sources)` keeps the current files in memory as `Artifact`s: a `one_to_one` or `one_to_many` step calls `execute()` once per file, a `many_to_one` step once on all. The first step reads the pipeline's input sources (the usual lazy `InputSource`s, owner-checked). A failure re-raises the `DomainException` with `Step k of n (tool) failed: …` in front (an `OperationRefused` becomes a `PipelineError`, `pipeline_step_failed`); more than 200 files between steps stops it. The last step's files become the result, zipped when asked or above 10.
+- **Job.** The tool plans and checks the input parameters, then hands `run()` to `operation_tool.run_work_as_job()`, so the whole pipeline is one job with the usual wait, handle, owner and cancel rules. Progress: `Job.set_progress(done, total, message)` stamps every later event with `done`/`total`, and `progress_forwarder` sends those as `progress`/`total` (events in between get a hair more, so the value always increases); other jobs keep the event count as before. Each operation takes its conversion slot itself, so the slot is free between steps.
+
 ## Conversion planning
 
 `registry.plan_conversion(src, dst, prefer_fidelity)` is the decision core. It searches the route graph for paths of up to `MAX_HOPS = 3` engine invocations and ranks candidates by:
@@ -199,7 +275,7 @@ uv run pytest                              # logic, < 1 s
 uv run python scripts/sweep_routes.py      # engines, ~70 s
 
 # Protocol check: start the server in another terminal first, with authentication off
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 
@@ -266,9 +342,9 @@ Non-PDF sources do know where an image belongs: in firecrawl's document model an
 
 Images under 2 KB (`MIN_IMAGE_BYTES`) are treated as decorative (rules, icons, textures) and skipped; extraction stops at 40 images (`MAX_IMAGES`) or 15 MB in total (`MAX_TOTAL_IMAGE_BYTES`).
 
-### One file per call, no `pdf_merge`
+### One injected file per call
 
-Hosts that inject uploaded files skip non-string parameters, so a `list[str]` of files can never be populated (see [artifact injection](#hosts-that-inject-uploaded-files-artifact-injection)). This is a structural constraint of the injection contract, not a design choice. The merge logic is implemented and tested (`pdfops.merge_pdfs`); a thin tool wrapper can be added once multi-file injection is available.
+Hosts that inject uploaded files skip non-string parameters, so a list of files can never be filled by injection (see [artifact injection](#hosts-that-inject-uploaded-files-artifact-injection)). `pdf_merge` (1.3) therefore takes its files as base64 items or `file_id`s the model passes itself; several injected uploads in one call are planned for 1.4 (#36).
 
 ### firecrawl-anydoc maturity
 

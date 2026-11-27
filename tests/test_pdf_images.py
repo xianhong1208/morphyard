@@ -589,8 +589,8 @@ async def test_tool_images_to_pdf_given_a_pdf():
 
 async def test_tool_images_to_pdf_size_limit(monkeypatch):
     """TC-PDFIMG-047"""
-    from src.fastmcp_tools import pdf_image_tools
-    monkeypatch.setattr(pdf_image_tools, "MAX_INPUT_MB", 0)
+    from src.domain.convert import service
+    monkeypatch.setattr(service, "MAX_INPUT_MB", 0)
     async with _client() as client:
         with pytest.raises(Exception, match="too large"):
             await client.call_tool("images_to_pdf", {
@@ -614,13 +614,13 @@ async def test_tools_check_options_before_taking_a_slot(monkeypatch):
     """TC-PDFIMG-049: a bad option is answered at once, even when the server is busy."""
     from contextlib import asynccontextmanager
 
-    from src.fastmcp_tools import pdf_image_tools
+    from src.domain.operations import pdf_image_ops
 
     @asynccontextmanager
     async def busy():
         raise RuntimeError("slot taken")
         yield
-    monkeypatch.setattr(pdf_image_tools, "conversion_slot", busy)
+    monkeypatch.setattr(pdf_image_ops, "conversion_slot", busy)
     async with _client() as client:
         with pytest.raises(Exception, match="dpi must be"):
             await client.call_tool("pdf_to_images", {

@@ -40,6 +40,9 @@ coverage.xml
 .env.*
 !.env.example
 
+# Stored files and the generated signing key (runtime data)
+data/
+
 # Logs (generated at runtime)
 logs/
 *.log

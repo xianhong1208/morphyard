@@ -42,6 +42,7 @@ Repeated calls only slow the response down; the outcome will not change.
 | "One file per page", "split it up" | `pdf_split` |
 | "These pages are sideways", "rotate them" | `pdf_rotate` |
 | "Add a password", "protect this file" | `pdf_protect` |
+| Several operations in a row ("merge, compress, then stamp DRAFT"), or one operation on many files | `pipeline` |
 
 **The most common mistake is confusing `extract_text` with `convert_document`.**
 The rule is simple: the user wants **you to read** the document -> `extract_text`;
@@ -73,10 +74,16 @@ the user wants **to receive a file** -> `convert_document`.
    first and confirm the split with the user.
 5. **The password stays in the conversation history.** When using
    `pdf_protect`, remind the user not to reuse a password from another system.
-6. **Only one file can be processed per call.** If the user uploads several
-   files and asks to merge or batch-convert them, handle them one at a time and
-   say the work happens in several steps; there is currently no tool that
-   merges several uploaded files.
+6. **Most tools take one file per call; `pdf_merge` and `images_to_pdf` take
+   several in `files`.** Each item of `files` is `{"file_id": "f_..."}` or the
+   file itself in `file_content`. When the user uploaded several files and each
+   upload reference can only go into one `file_content`, first call
+   `store_file` once per upload (reference in its `file_content`), collect the
+   `file_id`s it returns, then make one call:
+   `pdf_merge(files=[{"file_id": "f_A..."}, {"file_id": "f_B..."}])`, in the
+   order the user wants. A client that can send HTTP may instead get an upload
+   URL from `create_upload` and `PUT` the file to it. To run the same tool on
+   several files, use `pipeline` (below) with the files in `files`.
 7. **Always put the upload reference into `file_content`.**
    When you see a reference such as `[Uploaded Artifact: "report.pptx"]`, put it
    into `file_content`, not into `file_name` and not into `target_format`.
@@ -84,7 +91,39 @@ the user wants **to receive a file** -> `convert_document`.
    host fills it in automatically. `target_format` holds only the target format
    (e.g. `"pdf"`).
 
-8. **Always pass `output_name` to `convert_document`, set to the stem of the
+8. **Give the user the download link.** A tool that produces a file lists
+   each file's download link (and when it expires) in its text. If a file is
+   marked "link only" it is not attached to the reply: give the user that
+   link. The links stop working after the time shown.
+
+9. **Pass a result on by its `file_id`.** To work further on a file a tool
+   just returned (convert, then watermark, then compress), call the next tool
+   with `file_id` set to that result's `file_id` instead of `file_content`;
+   do not copy the file's content back. When the user gives a link to a file
+   instead of uploading it, pass the link in `url`. Give only one of
+   `file_content`, `file_id` and `url`. Only public addresses are fetched: if
+   a URL is refused as internal or local, ask the user to upload the file.
+
+10. **A long conversion answers with a `job_id`.** When a tool replies that
+   the work is still running and gives a `job_id`, call `job_status` with that
+   `job_id` (repeat while it says the work is still running) and give the user
+   its result. Do not call the original tool again for the same file: that
+   starts the conversion a second time. Use `job_cancel` if the user no longer
+   wants the result, and `job_list` to find a `job_id` you lost.
+
+11. **Use `pipeline` for more than one operation.** When the user wants
+   several things done in a row (merge, then compress, then watermark; split,
+   then rotate every part), make one `pipeline` call: the input (one file, or
+   several in `files`) plus `steps`, each `{"tool": "<tool>", "args": {...}}`
+   with that tool's own arguments but never the file. Intermediate files stay
+   on the server and only the final file(s) come back. A one-file tool runs on
+   each current file; `pdf_split` makes several; `pdf_merge` and
+   `images_to_pdf` combine them into one. At most 10 steps; tools that answer
+   with data (`extract_text`, `inspect_document`, `pdf_metadata`) are not
+   steps: call them on the result. If the pipeline is refused, the message
+   names the step to fix. For a single operation, call that tool directly.
+
+12. **Always pass `output_name` to `convert_document`, set to the stem of the
    original file name.** When the user uploads
    `[Uploaded Artifact: "Vendor Review 2026.pptx"]`, `output_name` is
    `Vendor Review 2026` (no extension). Without it the user downloads a file

@@ -14,7 +14,7 @@ Morphyard 把各種轉換以 MCP 工具提供，任何支援 MCP 的 client（Cl
 
 ## 一次呼叫長什麼樣子
 
-Word 檔以 base64 傳入；PDF 以 MCP embedded resource 回傳，並附上一段可以直接轉述給使用者的摘要。以下取自對本機伺服器的實際執行（FastMCP client）：
+Word 檔以 base64 傳入；回傳的 PDF 附有一段可以直接轉述給使用者的摘要、一個下載連結與一個 `file_id`（檔案在伺服器上保留一小時），檔案不超過 10 MB 時也會像以前一樣以 MCP embedded resource 附上檔案本身。以下取自對本機伺服器的實際執行（FastMCP client）：
 
 ```python
 await client.call_tool("convert_document", {
@@ -29,8 +29,15 @@ await client.call_tool("convert_document", {
 TEXT  Conversion complete: report.pdf
       Path: docx → pdf (engines: libreoffice)
       Size: 23.4 KB
+
+      Download link (valid until 2026-11-24 09:56 UTC, about 60 min):
+      - report.pdf (23.4 KB, file_id f_o2UZNq6ujcit_LQkGJ6Rcg): https://morphyard.example/files/f_o2UZNq6ujcit_LQkGJ6Rcg/report.pdf?exp=…&sig=…
+      To use a result in another Morphyard tool, pass its file_id instead of file_content.
 FILE  file:///report.pdf  application/pdf  23963 bytes
+LINK  https://morphyard.example/files/f_o2UZNq6ujcit_LQkGJ6Rcg/report.pdf?exp=…&sig=…  report.pdf  23963 bytes
 ```
+
+下一個工具可以用 `file_id` 處理這個結果，不必再傳檔案內容（例如對 `pdf_watermark` 傳 `{"text": "DRAFT", "file_id": "f_o2UZ…"}`）。超過 10 MB 的結果只回傳連結，不會塞滿模型的上下文；`MORPHYARD_RESULT_DELIVERY` 可切換 `auto`、`inline`（與 1.3 完全相同）、`both` 與 `link`，見[回傳方式](docs/configuration.zh-TW.md#回傳方式)。
 
 對同一個檔案呼叫 `extract_text`，則會回傳給模型閱讀的 Markdown：
 
@@ -51,7 +58,7 @@ FILE  file:///report.pdf  application/pdf  23963 bytes
 
 ## 主要特色
 
-- **所有工具，一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`、`pdf_unlock`、`pdf_compress`、`pdf_metadata`、`pdf_strip_metadata`，以及頁面工具 `pdf_merge`、`pdf_delete_pages`、`pdf_reorder_pages`、`pdf_watermark`、`pdf_page_numbers`、`pdf_to_images`、`images_to_pdf`。每個單檔工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對它們都適用；`pdf_merge` 則接收一個 `{file_content, file_name}` 的清單。
+- **所有工具，一套契約。** `convert_document`、`extract_text`、`inspect_document`、`list_supported_conversions`、`pdf_extract_pages`、`pdf_split`、`pdf_rotate`、`pdf_protect`、`pdf_unlock`、`pdf_compress`、`pdf_metadata`、`pdf_strip_metadata`，以及頁面工具 `pdf_merge`、`pdf_delete_pages`、`pdf_reorder_pages`、`pdf_watermark`、`pdf_page_numbers`、`pdf_to_images`、`images_to_pdf`，另有處理較久轉換的 `job_status`、`job_cancel` 與 `job_list`，先把檔案放上伺服器的 `store_file` / `create_upload`，以及依序執行多個工具的 `pipeline`。每個單檔工具都接收同一組 `file_content` / `file_name` / `mime_type` 參數，因此會把上傳檔案以 base64 注入的 host 對它們都適用，也可以改給先前結果的 `file_id`，或是下載檔案用的 `url`；`pdf_merge` 與 `images_to_pdf` 則接收 `files`：一個 `{file_content, file_name}`、`{file_id}` 或 `{url}` 的清單。
 - **PDF 頁面工具。** 依序合併多個 PDF，每個檔案一個書籤；刪除頁面；重排頁序（每頁都必須列出一次，不會不小心遺失頁面）；加上文字或圖片浮水印（置中、對角線或平鋪，可設透明度、顏色與角度）；加上頁碼（`{page} / {total}`）、頁首與頁尾。浮水印與頁碼依讀者看到的方向擺正，頁面大小不一或有旋轉的頁面也一樣；中文以內嵌字型繪製。
 - **PDF 壓縮、密碼與中繼資料。** `pdf_compress` 縮小 PDF（無損重整，或在 `balanced` / `small` 等級把圖片降解析度並重新編碼），並回報前後大小；`pdf_protect` 以 AES-256 設定開啟密碼，以及／或由擁有者密碼保護的權限（列印、複製、修改、註解、填寫表單）；`pdf_unlock` 憑密碼移除它們；`pdf_metadata` 回報 Info、XMP、加密、腳本與附件；`pdf_strip_metadata` 移除它們。
 - **六個引擎，依 fidelity 挑選。** LibreOffice 負責版面保真的 Office ↔ PDF，Pandoc 負責保留結構的文字格式，[firecrawl-anydoc](https://pypi.org/project/firecrawl-anydoc/) 負責快速的文件 → Markdown 抽取，Tesseract 負責 OCR，Pillow 負責圖片，另有一個輕量文字引擎處理 JSON / XML / TSV。缺少的引擎會在啟動時停用對應路徑，而不是在請求時才失敗。
@@ -59,6 +66,11 @@ FILE  file:///report.pdf  application/pdf  23963 bytes
 - **沒有檔名也能偵測格式。** 副檔名 → MIME → 容器內部檢查（ZIP 目錄 / OLE2 stream）→ 檔頭魔數。十六種格式在完全沒有檔名與 MIME type 的情況下仍能正確辨識。
 - **文件無法往外伸手。** 轉檔絕不讀取文件指向的本機檔案或網址，LibreOffice 也絕不執行巨集。
 - **標準化認證。** Bearer token 依 MCP Gate 的 JWKS 驗證（issuer、audience、可選的 scope）；伺服器發布 `/.well-known/oauth-protected-resource/mcp`，讓支援 OAuth 的 client 找到登入入口。開啟選用的 revocation feed 後，在 MCP Gate 撤銷的 token 會在一個輪詢間隔內（預設 30 秒）於此失效。
+- **結果以下載連結回傳。** 每個結果檔案都會在伺服器上保留一小時（可調整，最多一天），回覆附上有期限的簽章連結與 `file_id`，任何工具都能拿 `file_id` 當輸入，因此多步驟的工作（轉檔 → 浮水印 → 壓縮）不必把檔案再送回模型。10 MB 以內的結果仍會同時內嵌回傳（`auto`），會把內嵌檔案轉成 artifact 的 host 照常運作；更大的只給連結。每人與整體都有上限，滿了就拒絕新檔案，而不是刪掉尚未過期的檔案。見 [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md#暫存檔案與下載連結)。
+- **較久的轉換以工作執行。** 每次呼叫都在 20 秒內回覆：超過這個時間的轉換（例如 300 頁的文件轉 PDF）會回傳 `job_id` 並繼續執行，用 `job_status` 取得結果、`job_cancel` 停止它（連同 LibreOffice 的程序）、`job_list` 列出你的工作。只有啟動工作的人看得到它；每人與整體都有上限；client 要求時會送出進度通知。工作只存在記憶體中，重新啟動就會遺失。見[工作](docs/configuration.zh-TW.md#工作)。
+- **以網址提供檔案，並防範 SSRF。** 給工具 `url` 而不是檔案本身，Morphyard 會自行下載，而且只連公開位址：主機解析出的每個位址都要檢查，連線直接連到檢查過的位址（DNS rebinding 無法換掉它），每一次轉址都重新檢查，大小與時間也都有上限。`MORPHYARD_URL_ALLOW` 可以開放指定的區網主機。見[網址輸入](docs/configuration.zh-TW.md#網址輸入)。
+- **管線。** `pipeline` 在伺服器上把最多 10 個工具依序執行，作為一次呼叫：合併 → 壓縮 → 浮水印得到一個 PDF，分割 → 旋轉會旋轉每個分割出的檔案，對 20 個檔案跑同一個工具就是批次處理。中間檔案留在伺服器上，只回傳最後的檔案，以連結或一個 ZIP 提供。所有步驟都會在執行前先檢查，錯誤會指出是哪一步。整條管線是一個工作，進度以步驟計算。見[管線](docs/tools.zh-TW.md#工具)。
+- **一次呼叫多個檔案。** `pdf_merge` 與 `images_to_pdf` 一次最多接收 20 個檔案（合計 200 MB）。每次呼叫只能把上傳檔注入一個 `file_content` 的 host，可以先用 `store_file` 逐一存下每個上傳檔，它會回傳 `file_id`，模型再一次把所有 `file_id` 交出去。能送 HTTP 請求的 client 與腳本則可以向 `create_upload` 取得有簽章、只能用一次的上傳網址，用 `curl -T` 送出檔案內容，base64 完全不經過對話。見[一次呼叫多個檔案](docs/configuration.zh-TW.md#一次呼叫多個檔案與上傳)。
 - **到處都能跑。** 一個內建所有引擎的 Docker image，或直接 `uv run`。
 
 支援：pdf、docx、doc、odt、rtf、epub；xlsx、xls、ods、csv、tsv；pptx、ppt、odp；md、html、txt、rst、tex、json、xml；png、jpg、webp、gif、bmp、tiff。完整的工具與格式表在 [docs/tools.zh-TW.md](docs/tools.zh-TW.md)。
@@ -123,7 +135,7 @@ curl -i -X POST http://localhost:5055/mcp                                  # 401
 若要在沒有 MCP Gate 的情況下本機實驗，關閉認證啟動並執行協定 smoke test：
 
 ```bash
-AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
+AUTH_ENABLED=false SERVER_PORT=5056 MORPHYARD_BASE_URL=http://127.0.0.1:5056 MORPHYARD_REVOCATION_ENABLED=false uv run python main.py
 uv run python scripts/mcp_smoke.py
 ```
 
@@ -133,9 +145,11 @@ uv run python scripts/mcp_smoke.py
 
   ```bash
   docker build -t morphyard .
-  docker run -p 5055:5055 -e MCP_GATE_URL=http://mcp-gate:4568 \
+  docker run -p 5055:5055 -v morphyard-data:/app/data -e MCP_GATE_URL=http://mcp-gate:4568 \
     -e MORPHYARD_BASE_URL=http://127.0.0.1:5055 morphyard
   ```
+
+  `/app/data` volume 讓暫存檔案與下載連結的簽章金鑰在重建容器後仍然保留。
 
 - **直接在主機上**以 `uv run python main.py` 執行，如快速開始所示。
 

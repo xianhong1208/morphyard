@@ -13,7 +13,11 @@ from pydantic import BaseModel
 
 from src.version import get_version
 from src.auth import build_auth_provider, init_revocation, resolve_auth_settings, revocation_lifespan
+from src.api.router.files import install_access_log_redaction
 from src.config.config_manager import Config
+from src.domain.fetch import init_fetch
+from src.domain.files import files_lifespan, init_files
+from src.domain.jobs import jobs_lifespan, init_jobs
 from src.log import get_api_logger
 from src.middleware.request_id import RequestIdMiddleware
 from src.middleware.request_logging import RequestLogMiddleware
@@ -144,11 +148,21 @@ def create_app(config: BaseModel, transport: str):
     # --- MCP Gate revocation feed: built here, polled for the app's lifetime (no-op when off) ---
     init_revocation(config, env_refs=Config.get_env_refs())
 
+    # --- Stored files + signed download and upload links (raises on an unusable signing key) ---
+    init_files(config, env_refs=Config.get_env_refs())
+
+    # --- Jobs: conversions that outlive their call (in memory) ---
+    init_jobs(config)
+
+    # --- URL inputs: allow/deny lists and the fetch time limit ---
+    init_fetch(config)
+
     @asynccontextmanager
     async def lifespan(app):
         await _sweep_stale_libreoffice_profiles()
+        install_access_log_redaction()
         async with mcp_app.lifespan(app):
-            async with revocation_lifespan():
+            async with revocation_lifespan(), files_lifespan(), jobs_lifespan():
                 yield
 
     # --- FastAPI instance ---
@@ -209,6 +223,14 @@ def create_app(config: BaseModel, transport: str):
         fastapi_app.include_router(health_router)
     except Exception as e:
         api_logger.error(f"Failed to load health router: {e}")
+
+    # --- Signed download links for stored files ---
+    from src.api.router.files import router as files_router
+    fastapi_app.include_router(files_router)
+
+    # --- Signed single-use upload URLs (made by the create_upload tool) ---
+    from src.api.router.uploads import router as uploads_router
+    fastapi_app.include_router(uploads_router)
 
     # --- OAuth discovery for clients that probe the root / legacy well-known paths ---
     if fastapi_app.state.auth_settings is not None:

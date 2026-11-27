@@ -35,6 +35,13 @@ logger = get_mcptools_logger()
 # exhausts memory before conversion even starts.
 MAX_INPUT_MB = 50
 
+NO_FILE_MESSAGE = (
+    "No file provided. Upload a file first; the host injects it into "
+    "file_content automatically. To use a file an earlier Morphyard tool "
+    "returned, pass its file_id instead; for a file on the web, pass its "
+    "http(s) address in url."
+)
+
 # Output formats that can carry images. When converting to one of these, the
 # source's embedded images (PDF XObjects, Office / EPUB assets) are carried
 # across.
@@ -143,6 +150,57 @@ def _looks_like_a_file_name(value: str) -> bool:
     )
 
 
+def _check_input_size(raw: bytes) -> float:
+    """The input's size in MB; raises when it is over MAX_INPUT_MB."""
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > MAX_INPUT_MB:
+        raise UnsupportedFormatError(
+            f"File too large: {size_mb:.1f} MB, limit is {MAX_INPUT_MB} MB. "
+            "Tell the user the file exceeds the processing limit. For a PDF, "
+            "pdf_extract_pages can pull out the needed page range first; for other "
+            "formats ask the user to reduce the file and upload again. "
+            "Retrying with the same file will not succeed."
+        )
+    return size_mb
+
+
+def _unrecognized(file_name: str | None, mime_type: str | None) -> UnsupportedFormatError:
+    # Wording matters: the model decides its next step from this message.
+    # The old text only said "provide a file_name with an extension", so the
+    # model kept moving parameters around and retrying (six wasted calls in
+    # 12 seconds in real logs). Stating that format detection is already
+    # reliable, plus a list of what is inherently unsupported, is what makes
+    # it give up and inform the user.
+    return UnsupportedFormatError(
+        "Could not recognize this file's format. This service only handles "
+        "documents, spreadsheets, presentations and images; audio, video, "
+        "archives, executables and similar are never supported. Supported "
+        f"formats: {_SUPPORTED_SUMMARY}. "
+        "If the file is one of those types, retry with a file_name that has an "
+        "extension; otherwise tell the user this file type is not supported "
+        "and do not retry.",
+        file_name=file_name,
+        mime_type=mime_type,
+    )
+
+
+def resolve_stored_input(raw: bytes, file_name: str | None,
+                         mime_type: str | None = None) -> SourceFile:
+    """Detect the format of a file kept on the server (passed by `file_id`).
+
+    The same size limit and detection as an upload; there is no base64 step, and
+    plain-text sniffing applies to any UTF-8 file whose name does not say what it is.
+    """
+    size_mb = _check_input_size(raw)
+    fmt = detect_format(file_name=file_name, mime_type=mime_type, data=raw)
+    if not fmt:
+        fmt = _sniff_plain_text(raw)
+    if not fmt:
+        raise _unrecognized(file_name, mime_type)
+    logger.info(f"Stored file resolved: file_name={file_name!r} → format={fmt}, {size_mb:.2f} MB")
+    return SourceFile(data=raw, fmt=fmt, name=stem_of(file_name))
+
+
 def resolve_artifact_input(
     file_content: str | None,
     file_name: str | None,
@@ -155,22 +213,11 @@ def resolve_artifact_input(
     names to decide where to place the file.
     """
     if not file_content or not file_content.strip():
-        raise UnsupportedFormatError(
-            "No file provided. Upload a file first; the host injects it into "
-            "file_content automatically."
-        )
+        raise UnsupportedFormatError(NO_FILE_MESSAGE)
 
     raw, was_plain_text = _decode_file_content(file_content)
 
-    size_mb = len(raw) / (1024 * 1024)
-    if size_mb > MAX_INPUT_MB:
-        raise UnsupportedFormatError(
-            f"File too large: {size_mb:.1f} MB, limit is {MAX_INPUT_MB} MB. "
-            "Tell the user the file exceeds the processing limit. For a PDF, "
-            "pdf_extract_pages can pull out the needed page range first; for other "
-            "formats ask the user to reduce the file and upload again. "
-            "Retrying with the same file will not succeed."
-        )
+    size_mb = _check_input_size(raw)
 
     fmt = detect_format(file_name=file_name, mime_type=mime_type, data=raw)
 
@@ -183,15 +230,7 @@ def resolve_artifact_input(
         # the file content) into file_content. A generic "unrecognized format"
         # message sends it guessing at names and formats in a retry loop; naming
         # the exact mistake is what gets it to the right next step.
-        raise UnsupportedFormatError(
-            f"file_content looks like a file name ({file_content.strip()[:60]!r}) "
-            "rather than file content. This parameter must hold the file itself: "
-            "for an uploaded file, pass the upload reference (of the form "
-            "[Uploaded Artifact: \"...\"]) and the host will substitute the content; "
-            "if you are holding text (e.g. Markdown produced by a previous step), "
-            "paste the **complete content** here.",
-            file_name=file_name,
-        )
+        raise _file_name_in_content(file_content, file_name)
 
     if not fmt and was_plain_text:
         # Plain text has no magic bytes; look at syntactic cues instead.
@@ -199,23 +238,7 @@ def resolve_artifact_input(
         fmt = _sniff_plain_text(raw)
 
     if not fmt:
-        # Wording matters: the model decides its next step from this message.
-        # The old text only said "provide a file_name with an extension", so the
-        # model kept moving parameters around and retrying (six wasted calls in
-        # 12 seconds in real logs). Stating that format detection is already
-        # reliable, plus a list of what is inherently unsupported, is what makes
-        # it give up and inform the user.
-        raise UnsupportedFormatError(
-            "Could not recognize this file's format. This service only handles "
-            "documents, spreadsheets, presentations and images; audio, video, "
-            "archives, executables and similar are never supported. Supported "
-            f"formats: {_SUPPORTED_SUMMARY}. "
-            "If the file is one of those types, retry with a file_name that has an "
-            "extension; otherwise tell the user this file type is not supported "
-            "and do not retry.",
-            file_name=file_name,
-            mime_type=mime_type,
-        )
+        raise _unrecognized(file_name, mime_type)
 
     # Log file_name with repr so None and "" stay distinguishable; they mean
     # different failures:
@@ -230,6 +253,60 @@ def resolve_artifact_input(
         f"Artifact resolved: file_name={file_name!r} → format={fmt}, {size_mb:.2f} MB"
     )
     return SourceFile(data=raw, fmt=fmt, name=stem_of(file_name))
+
+
+def _file_name_in_content(file_content: str, file_name: str | None) -> UnsupportedFormatError:
+    return UnsupportedFormatError(
+        f"file_content looks like a file name ({file_content.strip()[:60]!r}) "
+        "rather than file content. This parameter must hold the file itself: "
+        "for an uploaded file, pass the upload reference (of the form "
+        "[Uploaded Artifact: \"...\"]) and the host will substitute the content; "
+        "if you are holding text (e.g. Markdown produced by a previous step), "
+        "paste the **complete content** here.",
+        file_name=file_name,
+    )
+
+
+def decode_upload_to_store(file_content: str | None, file_name: str | None,
+                           mime_type: str | None) -> tuple[bytes, str | None]:
+    """(bytes, detected format or None) of an upload that is kept as it is (store_file).
+
+    Any file is accepted, recognised or not (a ZIP of images, say); the same size limit and
+    the same "this is a file name, not a file" diagnosis as every other upload apply.
+    """
+    if not file_content or not file_content.strip():
+        raise UnsupportedFormatError(NO_FILE_MESSAGE)
+    raw, was_plain_text = _decode_file_content(file_content)
+    _check_input_size(raw)
+    fmt = detect_format(file_name=file_name, mime_type=mime_type, data=raw)
+    if not fmt and was_plain_text:
+        if _looks_like_a_file_name(file_content):
+            raise _file_name_in_content(file_content, file_name)
+        fmt = _sniff_plain_text(raw)
+    return raw, fmt
+
+
+def read_raw_upload(file_content: str | None, file_name: str | None) -> bytes:
+    """Decode an upload without format detection, with the same size limit
+
+    For inputs that are not a document format resolve_artifact_input knows, such
+    as images_to_pdf's ZIP of images.
+    """
+    if not file_content or not file_content.strip():
+        raise UnsupportedFormatError(NO_FILE_MESSAGE)
+    raw, _ = _decode_file_content(file_content)
+    return check_raw_input(raw, file_name)
+
+
+def check_raw_input(raw: bytes, file_name: str | None) -> bytes:
+    """The size limit for an input read without format detection."""
+    if len(raw) > MAX_INPUT_MB * 1024 * 1024:
+        raise UnsupportedFormatError(
+            f"File too large: {len(raw) / 1024 / 1024:.1f} MB, limit is {MAX_INPUT_MB} MB. "
+            "Split the images over several calls.",
+            file_name=file_name,
+        )
+    return raw
 
 
 async def run_plan(source: SourceFile, plan: list[Route], **opts) -> bytes:
@@ -271,6 +348,17 @@ async def convert_artifact(
         layer can tell the model honestly which engines were involved and how
         much was lost.
     """
+    dst = check_target_format(target_format)
+    source = resolve_artifact_input(file_content, file_name, mime_type)
+    return await convert_source(source, dst, prefer_fidelity, output_name, **opts)
+
+
+def check_target_format(target_format: str) -> str:
+    """The normalized target format, or UnsupportedFormatError
+
+    Judged from the argument alone, before any file is read (see convert_artifact
+    for why the order matters).
+    """
     if not target_format or not target_format.strip():
         # After the host resolves an upload reference, it blanks the parameter
         # that held the reference. If the model mistakenly put the reference in
@@ -293,7 +381,17 @@ async def convert_artifact(
             "scope of this service."
         )
 
-    source = resolve_artifact_input(file_content, file_name, mime_type)
+    return dst
+
+
+async def convert_source(
+    source: SourceFile,
+    dst: str,
+    prefer_fidelity: bool = True,
+    output_name: str | None = None,
+    **opts,
+) -> tuple[ConversionOutput, list[Route]]:
+    """Plan and run the conversion of a resolved input to a checked target format"""
     src, dst = resolve_formats(source.fmt, dst)
 
     plan = plan_conversion(src, dst, prefer_fidelity=prefer_fidelity)

@@ -47,11 +47,47 @@ convert:
   max_input_mb: ${MAX_INPUT_MB:-50}         # per-file limit
   engine_timeout_sec: ${ENGINE_TIMEOUT:-}    # seconds per engine call; empty = each engine's default (LibreOffice 180, Pandoc 120, OCR 300)
   max_hops: 3                               # longest multi-hop conversion path (overrides registry.MAX_HOPS)
-  # Conversions beyond the limit wait in a first-in, first-out queue; when it is full, or a request
-  # has waited queue_timeout_sec, it is refused as busy (MCP tool error; HTTP 503 + Retry-After).
+  # Conversions beyond the limit wait in a first-in, first-out queue; when it is full, a new one is
+  # refused as busy (MCP tool error). Tool calls run as jobs and wait in the queue without
+  # queue_timeout_sec (jobs.max_sec bounds them); the timeout applies to other callers only.
   max_concurrent_conversions: ${MORPHYARD_MAX_CONCURRENT_CONVERSIONS:-}   # empty = CPUs available, at most 8
   max_queued_conversions: ${MORPHYARD_MAX_QUEUED_CONVERSIONS:-}           # empty = 4 x the limit; 0 = no queue
   queue_timeout_sec: ${MORPHYARD_QUEUE_TIMEOUT:-30}                       # longest wait for a slot, seconds
+
+# Files kept on the server for a short time (results, job outputs, store_file files and uploads),
+# handed out as signed download links: <public_url>/files/<id>/<name>?exp=...&sig=...
+# Uploads go to signed single-use URLs from the create_upload tool: <public_url>/uploads/<id>?...
+# Anyone holding a link can download the file until it expires. When a cap is reached, new
+# files are refused; files that have not expired are never deleted to make room.
+files:
+  data_dir: "${MORPHYARD_DATA_DIR:-./data}"               # store + generated signing key (Docker: /app/data volume)
+  public_url: "${MORPHYARD_PUBLIC_URL:-}"                  # empty = MORPHYARD_BASE_URL
+  signing_key: "${MORPHYARD_SIGNING_KEY:-}"                # empty = generated once into <data_dir>/.signing_key
+  ttl_sec: ${MORPHYARD_FILE_TTL_SEC:-3600}                 # how long a file is kept, at most 86400 (24 h)
+  max_total_mb: ${MORPHYARD_STORE_MAX_MB:-2048}            # whole store
+  max_per_owner_mb: ${MORPHYARD_STORE_OWNER_MAX_MB:-512}   # per person (token `sub`)
+  sweep_interval_sec: 60                                   # expired files are deleted this often and at startup
+  result_delivery: "${MORPHYARD_RESULT_DELIVERY:-auto}"    # auto | inline | both | link
+  inline_max_mb: ${MORPHYARD_INLINE_MAX_MB:-10}            # auto: files up to this size also come back as base64
+
+# Conversions run as jobs: a call waits up to wait_sec, then answers with a job id that
+# job_status / job_cancel / job_list reach. Jobs are kept in memory (a restart loses them; files
+# already kept stay until they expire). A finished job is kept as long as its files (ttl_sec).
+jobs:
+  wait_sec: ${MORPHYARD_JOB_WAIT_SEC:-20}                 # wait in a call (and per job_status) before answering, at most 120
+  max_per_owner: ${MORPHYARD_MAX_JOBS_PER_OWNER:-5}       # jobs queued or running at once per person (everyone, without auth)
+  max_active: ${MORPHYARD_MAX_JOBS:-64}                   # jobs queued or running at once on the server
+  max_sec: ${MORPHYARD_JOB_MAX_SEC:-1800}                 # a job is stopped after this long, queue wait included
+
+# Tools take a file by URL too (`url`, next to file_content and file_id). Only public addresses are
+# fetched: every address the host resolves to must be public, the connection goes to the address that
+# was checked, redirects (at most 5, never https -> http) are checked again, and the file is capped at
+# convert.max_input_mb. allow / deny: comma lists of networks (CIDR) and exact host names; deny wins.
+fetch:
+  enabled: ${MORPHYARD_URL_FETCH:-true}
+  allow: "${MORPHYARD_URL_ALLOW:-}"          # e.g. 192.168.1.0/24,nas.lan (LAN hosts that may be fetched)
+  deny: "${MORPHYARD_URL_DENY:-}"            # networks / host names never fetched, even when allowed
+  timeout_sec: ${MORPHYARD_URL_TIMEOUT_SEC:-60}   # the whole fetch, redirects included
 
 modules:
   enabled:
