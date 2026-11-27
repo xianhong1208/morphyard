@@ -31,7 +31,7 @@ async def _tool_list() -> list[dict]:
 
 
 def test_tool_list_matches_the_snapshot():
-    """TC-OPS-001: names, order, descriptions and schemas of all 22 tools are unchanged."""
+    """TC-OPS-001: names, order, descriptions and schemas of all 24 tools are unchanged."""
     current = asyncio.run(_tool_list())
     expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     assert [t["name"] for t in current] == [t["name"] for t in expected]
@@ -39,7 +39,7 @@ def test_tool_list_matches_the_snapshot():
         assert got == want, f"tool {want['name']} differs from tests/fixtures/mcp_tools.json"
         # Dict equality ignores key order; the order of parameters is part of the contract
         assert json.dumps(got) == json.dumps(want), f"tool {want['name']}: parameter order"
-    assert len(current) == 22
+    assert len(current) == 24
 
 
 if __name__ == "__main__" and "--write" in sys.argv:

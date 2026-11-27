@@ -127,6 +127,42 @@ r3 = await client.call_tool("pdf_compress", {"file_id": "<file_id from r2>"})
 - A `file_id` works only for the person whose call produced it, until it expires. An id that is unknown, expired or someone else's gets the same answer, so it never tells whether a file exists. With authentication off, everyone is the same person (`anonymous`).
 - `file_name` / `mime_type` may still be given with a `file_id`; otherwise the stored name and type are used. The usual 50 MB input limit applies.
 
+
+## Several files per call and uploads
+
+`pdf_merge` (2–20 PDFs) and `images_to_pdf` (1–20 images, one page each) take `files`, a list in which every item is one file:
+
+- `{"file_id": "f_…"}`: a file kept on the server (a result, a file stored with `store_file`, or an upload made with `create_upload`), or
+- `{"file_content": "<base64>", "file_name": "a.pdf"}`: the file itself.
+
+Exactly one of the two per item. A wrong item is refused before anything is read, and every error names the item (`File #2 in files (b.pdf): …`). The files of one call may add up to 200 MB; each one is still held to the 50 MB input limit. `images_to_pdf` still takes a single image or a ZIP of images in `file_content` / `file_id` instead.
+
+There are two ways to get several files onto the server without the model copying base64:
+
+**`store_file`, for hosts that inject one upload per call.** Many hosts put an uploaded file into a tool's `file_content` parameter, one per call, so a model cannot pass three uploads to `pdf_merge` in one call. `store_file` takes one file through the same `file_content` / `file_name` / `mime_type` parameters and keeps it unchanged, answering with its `file_id`. The model calls it once per upload, then makes one call with all the `file_id`s:
+
+```text
+store_file(file_content="[Uploaded Artifact: \"a.pdf\"]")  -> file_id f_A…
+store_file(file_content="[Uploaded Artifact: \"b.pdf\"]")  -> file_id f_B…
+pdf_merge(files=[{"file_id": "f_A…"}, {"file_id": "f_B…"}])
+```
+
+**`create_upload`, for clients that can send HTTP.** `create_upload(file_name, size_bytes?)` answers with a `file_id` and a signed upload URL:
+
+```bash
+curl -T scan.pdf 'https://morphyard.example/uploads/f_…?exp=…&max=…&sig=…'
+# 201 {"file_id": "f_…", "name": "scan.pdf", "size": 48213, "sha256": "…", "expires_at": …}
+```
+
+- The URL takes one `PUT` of the raw bytes (plain or chunked) within 15 minutes, then the `file_id` works as input. It can be used once: a second `PUT` after a stored upload gets 409. A refused or broken-off upload stores nothing, and the URL can be tried again until it expires.
+- The URL is the only credential, like a download link: whoever holds it can send the file. The file always belongs to the person whose call made the URL; nobody else can use its `file_id`.
+- At most `size_bytes` (when given) or the 50 MB input limit. The limit is checked against `Content-Length` and again while the body is read, so a wrong `Content-Length` or a chunked body cannot get past it (413).
+- The upload counts toward its owner's share of the store: when the URL's limit does not fit, the `PUT` gets 507 `storage_full` (with `Retry-After` when waiting for older files to expire would help) before the body is read.
+- A tampered, expired or unknown URL gets one and the same 404. Query strings (the signature) never reach the logs.
+- Pending uploads live in memory: a restart forgets them, and their URLs then get 404. Bodies are received into `<MORPHYARD_DATA_DIR>/uploads/`, deleted when the request ends and emptied at startup.
+
+Files stored either way are kept like results (`MORPHYARD_FILE_TTL_SEC`) and count toward the same caps.
+
 ## Token revocation
 
 Morphyard verifies MCP Gate tokens offline, so by default a token revoked in MCP Gate keeps working here until it expires — and a personal access token can live up to a year. Turn on the **revocation feed** and Morphyard polls MCP Gate's `POST /oauth/revoked` in the background (every `poll_interval_sec`, with jitter and error backoff), keeps the revoked-but-unexpired `jti`s in memory, and answers a listed token on `/mcp` with 401 `invalid_token`. A revocation takes effect within about one poll interval.
