@@ -30,6 +30,14 @@ auth:
     poll_interval_sec: ${MORPHYARD_REVOCATION_POLL_INTERVAL:-30}   # a revocation takes effect within about this long
     fail_mode: "${MORPHYARD_REVOCATION_FAIL_MODE:-open}"          # open | closed (reject all tokens when the feed is stale)
     stale_after_intervals: 4                                   # "stale" = no successful poll for 4 x poll_interval_sec
+  # MCP Gate tool approvals and access rules (docs/configuration.md -> "Tool approvals and access
+  # rules"): only tools approved in the MCP Gate console are listed and callable, the console's
+  # access rules apply per token, and a call missing a scope gets HTTP 403 (step-up). Uses the
+  # revocation client above (MORPHYARD_REVOCATION_CLIENT_ID / _SECRET), even with the feed off.
+  tool_policy:
+    enabled: ${MORPHYARD_TOOL_POLICY_ENABLED:-false}
+    poll_interval_sec: ${MORPHYARD_TOOL_POLICY_POLL_INTERVAL:-15}   # a console change takes effect within about this long
+    fail_mode: "${MORPHYARD_TOOL_POLICY_FAIL_MODE:-closed}"        # closed | open: tools before the first policy (hidden | all listed)
 
 logging:
   level: "${LOG_LEVEL:-INFO}"

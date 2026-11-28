@@ -19,6 +19,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import BaseModel, Field
 
+from src.auth import check_pipeline_steps
 from src.domain.jobs import Job
 from src.domain.operations import InputSource, pipeline
 from src.fastmcp_tools.file_inputs import MAX_FILES_PER_CALL, FileInput, item_sources
@@ -137,6 +138,8 @@ def register_pipeline_tool(mcp: FastMCP) -> None:
         count = len(files) if files else 1
         # Everything that can be checked without reading a file, before the job starts.
         planned = pipeline.plan(steps, count)
+        # With MCP Gate's tool policy on, a step is refused when its tool could not be called directly.
+        await check_pipeline_steps(s.op.name for s in planned)
         detect = planned[0].op.detect_input_format
         sources = _sources(kwargs, detect, owner)
         output_name, zip_outputs = kwargs.get("output_name"), bool(kwargs.get("zip_outputs"))

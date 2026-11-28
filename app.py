@@ -12,7 +12,13 @@ from fastmcp import FastMCP
 from pydantic import BaseModel
 
 from src.version import get_version
-from src.auth import build_auth_provider, init_revocation, resolve_auth_settings, revocation_lifespan
+from src.auth import (
+    build_auth_provider,
+    init_revocation,
+    init_tool_policy,
+    resolve_auth_settings,
+    revocation_lifespan,
+)
 from src.api.router.files import install_access_log_redaction
 from src.config.config_manager import Config
 from src.domain.fetch import init_fetch
@@ -143,7 +149,12 @@ def create_app(config: BaseModel, transport: str):
     #     publishes /.well-known/oauth-protected-resource when an auth provider is set. ---
     auth = build_auth_provider(config)
     mcp = FastMCP(name=app_name, version=app_version, instructions=instructions, auth=auth)
-    mcp_app = mcp.http_app(transport=transport)
+
+    # --- MCP Gate tool approvals + access rules (off by default): a FastMCP middleware on the
+    #     server and the step-up gate (ASGI) in front of its HTTP handler ---
+    tool_policy = init_tool_policy(config, env_refs=Config.get_env_refs())
+    http_middleware = tool_policy.install(mcp) if tool_policy is not None else None
+    mcp_app = mcp.http_app(transport=transport, middleware=http_middleware)
 
     # --- MCP Gate revocation feed: built here, polled for the app's lifetime (no-op when off) ---
     init_revocation(config, env_refs=Config.get_env_refs())
@@ -162,8 +173,12 @@ def create_app(config: BaseModel, transport: str):
         await _sweep_stale_libreoffice_profiles()
         install_access_log_redaction()
         async with mcp_app.lifespan(app):
-            async with revocation_lifespan(), files_lifespan(), jobs_lifespan():
-                yield
+            try:
+                async with revocation_lifespan(), files_lifespan(), jobs_lifespan():
+                    yield
+            finally:
+                if tool_policy is not None:
+                    await tool_policy.close()
 
     # --- FastAPI instance ---
     fastapi_app = FastAPI(

@@ -27,6 +27,7 @@
 | `MORPHYARD_URL_FETCH` | `true` | 工具可用 `url` 接收檔案；`false` 會拒絕所有網址。見[網址輸入](#網址輸入)。 |
 | `MORPHYARD_URL_ALLOW` / `MORPHYARD_URL_DENY` | 空白 | 以逗號分隔的網段（CIDR）與完整主機名稱：允許下載的區網主機，以及一律拒絕的主機（拒絕優先）。 |
 | `MORPHYARD_URL_TIMEOUT_SEC` | `60` | 一次下載（含轉址）的總秒數，最多 600。 |
+| `MORPHYARD_TOOL_POLICY_ENABLED` | `false` | MCP Gate 的 tool 核准與存取規則。見 [Tool 核准與存取規則](#tool-核准與存取規則)。 |
 | `LOG_LEVEL` | `INFO` | |
 
 YAML 中的 `auth.required_scopes` 可要求每個 token 都必須帶有某個 scope（例如 `mcp:tools:invoke`）；`auth.audience` 則可在註冊的 resource URI 不是 `<base_url>/mcp` 的少數情況下覆寫推導值。
@@ -212,6 +213,33 @@ Morphyard 以離線方式驗證 MCP Gate 的 token，因此預設情況下，在
    MORPHYARD_REVOCATION_CLIENT_SECRET=...
    ```
 4. **確認。** 啟動 log 會出現 `MCP Gate revocation feed: ENABLED …`；`curl -s localhost:5055/health` 會看到最近的 `revocation.last_success`。在 MCP Gate 撤銷一個測試 token，`poll_interval_sec` 內用它呼叫 `/mcp` 會得到 401。`last_error` 出現 `HTTP 401: invalid_client` 表示憑證錯誤；`HTTP 403: unauthorized_client` 表示 client 尚未綁定伺服器。
+
+## Tool 核准與存取規則
+
+預設關閉。開啟後，Morphyard 會在自己的 tool 上執行 MCP Gate 提供的 server 端 middleware（MCP Gate 1.6；`src/auth/mcp_gate_hooks.py` 是 MCP Gate `examples/mcp_gate_hooks.py` 未經修改的副本）：
+
+- **核准。** 只有管理員在 MCP Gate 管理台核准的 tool 定義，才會出現在 `tools/list`、才能被 `tools/call` 執行。每份定義以 SHA-256 雜湊釘住，所以說明一改就算是新的定義。MCP Gate 還不認得的定義會立刻隱藏並回報給它，在管理台等待核准。被拒絕的呼叫和不存在的 tool 得到相同的回覆：`Tool '<name>' is not available on this server.`
+- **存取規則。** 在 MCP Gate 為 Morphyard 設定的*存取控制*規則，會套用到每個 token（它的 `jti`、`client_id`、`sub` 與 `scope`）。呼叫者被拒絕、或不在其「限定這些 tool」規則內的 tool 會隱藏，呼叫時和不存在的 tool 一樣被拒絕。token 缺少所需 scope 的 tool 仍會列出，呼叫時收到 **HTTP 403** `WWW-Authenticate: Bearer error="insufficient_scope", scope="<scope>"`。支援追加授權的 client 會請使用者同意這個 scope 再重試，其他 client 則會顯示寫明 scope 的原因說明。管理台的變更在一次輪詢內就會套用到 Morphyard。
+- **Pipeline。** `pipeline` 的每個步驟都會像直接呼叫該 tool 一樣檢查，所以無法透過 `pipeline` 繞過針對某個 tool 的規則。被拒絕的步驟以 tool 錯誤回覆 `Step k of n (<tool>): …`，不會回 403。
+
+| 變數 / 設定 | 預設 | 說明 |
+|---|---|---|
+| `MORPHYARD_TOOL_POLICY_ENABLED`（`auth.tool_policy.enabled`） | `false` | 開啟此功能。關閉時不輪詢、不寫快取，每個有效的 token 都看得到所有 tool，和以前一樣。需要開啟認證；`AUTH_ENABLED=false` 時開啟會拒絕啟動。 |
+| `MORPHYARD_REVOCATION_CLIENT_ID` / `_SECRET` | — | policy feed 和撤銷清單使用同一個 resource server client（見 [Token 撤銷](#token-撤銷) 步驟 1–2），不論撤銷清單本身有沒有開啟。沒設定會拒絕啟動；secret 必須維持 `${ENV_VAR}` 參照。 |
+| `MORPHYARD_TOOL_POLICY_POLL_INTERVAL`（`poll_interval_sec`） | `15` | 輪詢 `POST <MCP Gate>/oauth/policy` 的間隔秒數（5–3600）。 |
+| `MORPHYARD_TOOL_POLICY_FAIL_MODE`（`fail_mode`） | `closed` | 還沒收到任何 policy 時（從未連上 MCP Gate、也沒有快取）：`closed` 隱藏所有 tool，這是 MCP Gate 建議的做法；`open` 在收到第一份 policy 之前列出並執行所有 tool，這段期間不套用任何規則。 |
+
+最後收到的 policy 會快取在 `<MORPHYARD_DATA_DIR>/mcp_gate_policy.json`（權限 600，以原子方式寫入）。連不到 MCP Gate 時會繼續套用這份 policy，重啟後也一樣。請像保護資料目錄一樣保護這個檔案：能寫入它的人，在下一次成功輪詢之前都能放寬 policy。Morphyard 仍然要用 MCP Gate 的 JWKS 驗證 token，而 JWKS 是第一次使用時才抓取，所以在 MCP Gate 停機時重啟，要等 MCP Gate 恢復回應後才能驗證 token。
+
+啟動 log 會寫 `MCP Gate tool approvals and access rules: ENABLED …` 或 `off`。`GET /health` 的 `tool_policy` 會回報 `state`：`feed`（來自 MCP Gate）、`cache`（來自快取檔，MCP Gate 尚未回應）、`open`，或 `closed`（所有 tool 隱藏，此時 `status` 變成 `degraded`），以及 policy 裡已核准的定義、規則與有 scope 的 tool 各有幾個。
+
+**設定步驟：**
+
+1. 依照[撤銷清單](#token-撤銷)的步驟 1–2 設定 resource server client，並設定 `MORPHYARD_REVOCATION_CLIENT_ID` / `_SECRET`。
+2. 設定 `MORPHYARD_TOOL_POLICY_ENABLED=true` 後重新啟動。第一次呼叫時 Morphyard 會回報它的 tool；新服務的 tool 會在 MCP Gate 中顯示為待核准（*Services → Morphyard → Tools*），核准前都會隱藏。*Approve all* 可以一次核准服務的第一份清單。
+3. **確認。** MCP Gate 的 Morphyard 頁面會顯示 *Tool approvals: enforced* 與**存取規則已執行**；`curl -s localhost:5055/health` 會看到 `tool_policy.state: feed`。
+
+要更新 hooks 檔的副本：把 MCP Gate 的 `examples/mcp_gate_hooks.py` 複製到 `src/auth/mcp_gate_hooks.py`，把它的 `tests/fixtures/tool_hash_vectors.json` 與 `tool_policy_vectors.json` 複製到 `tests/fixtures/mcp_gate/`，更新 `src/auth/tool_policy.py` 的 `HOOKS_SOURCE`，然後跑測試：測試會確認副本能算出每一筆標準向量。
 
 ## 改名的變數
 
