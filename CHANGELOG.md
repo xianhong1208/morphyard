@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- MCP Gate tool approvals, access rules and step-up, opt-in (`MORPHYARD_TOOL_POLICY_ENABLED`, default `false`; MCP Gate 1.6). When on, only tool definitions approved in MCP Gate are listed and callable, and new or changed ones are reported to MCP Gate as pending. MCP Gate's access rules apply to each token. A call that lacks a scope gets HTTP 403 `insufficient_scope`, and each `pipeline` step is checked like a direct call. The policy feed uses the revocation feed's client (`MORPHYARD_REVOCATION_CLIENT_ID` / `_SECRET`). The last policy is cached in `MORPHYARD_DATA_DIR/mcp_gate_policy.json` (mode 600), and `MORPHYARD_TOOL_POLICY_FAIL_MODE=closed` (default) hides every tool until a first policy arrives. The middleware is MCP Gate's `examples/mcp_gate_hooks.py`, copied unmodified to `src/auth/mcp_gate_hooks.py`. Its tests reproduce MCP Gate's golden vectors. New settings: `MORPHYARD_TOOL_POLICY_ENABLED`, `MORPHYARD_TOOL_POLICY_POLL_INTERVAL` (15), `MORPHYARD_TOOL_POLICY_FAIL_MODE` (`closed`).
+
+### Changed
+- `GET /health` has a `tool_policy` block (`{"status": "disabled", "enabled": false}` while off); a `closed` tool policy makes `status` `degraded`.
+
 ## [1.4.0] — 2026-11-27
 
 ### Added

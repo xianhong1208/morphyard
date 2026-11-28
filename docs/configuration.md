@@ -27,6 +27,7 @@ Everything is in [`config/config.yaml`](../config/config.yaml) and reads environ
 | `MORPHYARD_URL_FETCH` | `true` | Tools take a file by `url`. `false` refuses every URL. See [URL inputs](#url-inputs). |
 | `MORPHYARD_URL_ALLOW` / `MORPHYARD_URL_DENY` | empty | Comma lists of networks (CIDR) and exact host names: LAN hosts that may be fetched, and hosts that never are (deny wins). |
 | `MORPHYARD_URL_TIMEOUT_SEC` | `60` | Seconds for a whole fetch, redirects included (at most 600). |
+| `MORPHYARD_TOOL_POLICY_ENABLED` | `false` | MCP Gate tool approvals and access rules. See [Tool approvals and access rules](#tool-approvals-and-access-rules). |
 | `LOG_LEVEL` | `INFO` | |
 
 In the YAML, `auth.required_scopes` lets you demand a scope such as `mcp:tools:invoke` on every token, and `auth.audience` overrides the derived audience for the rare case where the registered resource URI is not `<base_url>/mcp`.
@@ -212,6 +213,33 @@ The first poll fetches the whole list; later polls ask only for revocations sinc
    MORPHYARD_REVOCATION_CLIENT_SECRET=...
    ```
 4. **Check it.** The startup log says `MCP Gate revocation feed: ENABLED …`; `curl -s localhost:5055/health` shows a recent `revocation.last_success`. Revoke a test token in MCP Gate; within `poll_interval_sec` a call to `/mcp` with it gets 401. `HTTP 401: invalid_client` in `last_error` means wrong credentials; `HTTP 403: unauthorized_client` means the client is not bound to a server.
+
+## Tool approvals and access rules
+
+Off by default. Turn it on and Morphyard runs MCP Gate's own server-side middleware on its tools (MCP Gate 1.6; `src/auth/mcp_gate_hooks.py` is an unmodified copy of MCP Gate's `examples/mcp_gate_hooks.py`):
+
+- **Approvals.** Only tool definitions an admin approved in MCP Gate's console are listed by `tools/list` and run by `tools/call`. Each definition is pinned by a SHA-256 hash, so a changed description counts as a new definition. A definition MCP Gate does not know yet is hidden at once and reported to it, and waits in the console as pending. A refused call gets the same answer as an unknown tool: `Tool '<name>' is not available on this server.`
+- **Access rules.** The rules set on Morphyard's *Access* tab in MCP Gate apply to each token (its `jti`, `client_id`, `sub` and `scope`). A tool denied to the caller, or outside its "only these tools" rule, is hidden and refused like an unknown tool. A tool in a scope the token lacks is listed, and its call gets **HTTP 403** `WWW-Authenticate: Bearer error="insufficient_scope", scope="<scope>"`. A client that supports step-up asks the user for that scope and retries. Other clients show the reason, which names the scope. A change in the console reaches Morphyard within one poll.
+- **Pipelines.** Each `pipeline` step is checked as if its tool were called directly, so a rule on a tool cannot be bypassed through `pipeline`. A refused step answers `Step k of n (<tool>): …` as a tool error, not as a 403.
+
+| Variable / setting | Default | Description |
+|---|---|---|
+| `MORPHYARD_TOOL_POLICY_ENABLED` (`auth.tool_policy.enabled`) | `false` | Turn it on. Off = nothing is polled, nothing is cached, and every tool is listed to every valid token, as before. Needs authentication on; on with `AUTH_ENABLED=false` refuses to start. |
+| `MORPHYARD_REVOCATION_CLIENT_ID` / `_SECRET` | — | The policy feed takes the same resource-server client as the revocation feed ([Token revocation](#token-revocation), steps 1–2), whether or not the revocation feed itself is on. Empty refuses to start; the secret must stay an `${ENV_VAR}` reference. |
+| `MORPHYARD_TOOL_POLICY_POLL_INTERVAL` (`poll_interval_sec`) | `15` | Seconds between polls of `POST <MCP Gate>/oauth/policy` (5–3600). |
+| `MORPHYARD_TOOL_POLICY_FAIL_MODE` (`fail_mode`) | `closed` | Before any policy was received (MCP Gate never reached, no cache): `closed` hides every tool, as MCP Gate recommends; `open` lists and runs every tool until the first policy arrives, and no rule applies until then. |
+
+The last policy received is cached in `<MORPHYARD_DATA_DIR>/mcp_gate_policy.json` (mode 600, written atomically). While MCP Gate is unreachable that policy keeps applying, also across a restart. Protect the file like the data directory: whoever can write it can loosen the policy until the next successful poll. Morphyard still verifies tokens against MCP Gate's JWKS, which it fetches on first use, so after a restart with MCP Gate down no token verifies until MCP Gate answers.
+
+Startup logs `MCP Gate tool approvals and access rules: ENABLED …` or `off`. `GET /health` reports `tool_policy`: `state` is `feed` (from MCP Gate), `cache` (from the cache file, MCP Gate not answered yet), `open`, or `closed` (every tool hidden, which turns `status` into `degraded`). It also reports how many approved definitions, rules and scoped tools the policy holds.
+
+**Setting it up:**
+
+1. Set up the resource-server client as for the [revocation feed](#token-revocation) (steps 1–2), and set `MORPHYARD_REVOCATION_CLIENT_ID` / `_SECRET`.
+2. Set `MORPHYARD_TOOL_POLICY_ENABLED=true` and restart. On the first call Morphyard reports its tools; a new service's tools wait as pending in MCP Gate (*Services → Morphyard → Tools*) and stay hidden until approved. *Approve all* approves a service's first list in one step.
+3. **Check it.** In MCP Gate, Morphyard's page shows *Tool approvals: enforced* and **Access rules enforced**. `curl -s localhost:5055/health` shows `tool_policy.state: feed`.
+
+To update the copy of the hooks file, copy MCP Gate's `examples/mcp_gate_hooks.py` to `src/auth/mcp_gate_hooks.py`, copy its `tests/fixtures/tool_hash_vectors.json` and `tool_policy_vectors.json` to `tests/fixtures/mcp_gate/`, update `HOOKS_SOURCE` in `src/auth/tool_policy.py`, and run the tests: they check that the copy reproduces every golden vector.
 
 ## Renamed variables
 

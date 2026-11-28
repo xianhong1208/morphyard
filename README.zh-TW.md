@@ -65,7 +65,7 @@ LINK  https://morphyard.example/files/f_o2UZNq6ujcit_LQkGJ6Rcg/report.pdf?exp=�
 - **多跳規劃，並說明代價。** 沒有引擎能直接把 A 轉成 B 時，registry 會搜尋最多三跳的路徑並依 fidelity 排序。有損的跳預設允許，但會在結果中標記，讓模型轉告使用者；傳 `allow_quality_loss=false` 則拒絕任何會失去版面的路徑。
 - **沒有檔名也能偵測格式。** 副檔名 → MIME → 容器內部檢查（ZIP 目錄 / OLE2 stream）→ 檔頭魔數。十六種格式在完全沒有檔名與 MIME type 的情況下仍能正確辨識。
 - **文件無法往外伸手。** 轉檔絕不讀取文件指向的本機檔案或網址，LibreOffice 也絕不執行巨集。
-- **標準化認證。** Bearer token 依 MCP Gate 的 JWKS 驗證（issuer、audience、可選的 scope）；伺服器發布 `/.well-known/oauth-protected-resource/mcp`，讓支援 OAuth 的 client 找到登入入口。開啟選用的 revocation feed 後，在 MCP Gate 撤銷的 token 會在一個輪詢間隔內（預設 30 秒）於此失效。
+- **標準化認證。** Bearer token 依 MCP Gate 的 JWKS 驗證（issuer、audience、可選的 scope）；伺服器發布 `/.well-known/oauth-protected-resource/mcp`，讓支援 OAuth 的 client 找到登入入口。開啟選用的 revocation feed 後，在 MCP Gate 撤銷的 token 會在一個輪詢間隔內（預設 30 秒）於此失效。開啟選用的 tool policy（`MORPHYARD_TOOL_POLICY_ENABLED=true`）後，只有管理員在 MCP Gate 核准的 tool 會列出、能呼叫，MCP Gate 的存取規則會套用到每個 token，缺少 scope 的呼叫會收到 HTTP 403 追加授權要求；見 [Tool 核准與存取規則](docs/configuration.zh-TW.md#tool-核准與存取規則)。
 - **結果以下載連結回傳。** 每個結果檔案都會在伺服器上保留一小時（可調整，最多一天），回覆附上有期限的簽章連結與 `file_id`，任何工具都能拿 `file_id` 當輸入，因此多步驟的工作（轉檔 → 浮水印 → 壓縮）不必把檔案再送回模型。10 MB 以內的結果仍會同時內嵌回傳（`auto`），會把內嵌檔案轉成 artifact 的 host 照常運作；更大的只給連結。每人與整體都有上限，滿了就拒絕新檔案，而不是刪掉尚未過期的檔案。見 [docs/configuration.zh-TW.md](docs/configuration.zh-TW.md#暫存檔案與下載連結)。
 - **較久的轉換以工作執行。** 每次呼叫都在 20 秒內回覆：超過這個時間的轉換（例如 300 頁的文件轉 PDF）會回傳 `job_id` 並繼續執行，用 `job_status` 取得結果、`job_cancel` 停止它（連同 LibreOffice 的程序）、`job_list` 列出你的工作。只有啟動工作的人看得到它；每人與整體都有上限；client 要求時會送出進度通知。工作只存在記憶體中，重新啟動就會遺失。見[工作](docs/configuration.zh-TW.md#工作)。
 - **以網址提供檔案，並防範 SSRF。** 給工具 `url` 而不是檔案本身，Morphyard 會自行下載，而且只連公開位址：主機解析出的每個位址都要檢查，連線直接連到檢查過的位址（DNS rebinding 無法換掉它），每一次轉址都重新檢查，大小與時間也都有上限。`MORPHYARD_URL_ALLOW` 可以開放指定的區網主機。見[網址輸入](docs/configuration.zh-TW.md#網址輸入)。
@@ -160,7 +160,7 @@ uv run python scripts/mcp_smoke.py
 | 文件 | 內容 |
 |---|---|
 | [工具與格式](docs/tools.zh-TW.md) | 各工具、支援的格式、一次轉換如何執行、已知限制 |
-| [設定](docs/configuration.zh-TW.md) | 環境變數、同時轉換與 MCP Gate revocation feed |
+| [設定](docs/configuration.zh-TW.md) | 環境變數、同時轉換、MCP Gate revocation feed、tool 核准與存取規則 |
 | [架構](docs/architecture.md)（英文） | 模組配置、引擎與 fidelity、格式偵測、轉換規劃、測試分層 |
 | [開發](docs/development.zh-TW.md) | 準備環境、三層測試、CI、如何貢獻 |
 | [發展路線圖](ROADMAP.zh-TW.md) | 已發布與接下來的內容 |
